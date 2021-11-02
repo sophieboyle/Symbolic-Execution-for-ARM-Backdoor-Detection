@@ -15,7 +15,23 @@ class Analyser:
         self.authentication_identifiers = authentication_identifiers
         self.project = project = angr.Project(filename)
         self.entry_state = project.factory.entry_state()
+        self.cfg = project.analyses.CFG(fail_fast=True)
         print(self.authentication_identifiers["string"][0])
+
+    def find_file_io(self, io_func_name, file_accessed):
+        """
+        io_funct_name : string name of function to identify
+        file_accessed : the filename of the file that the function operates on
+        Function that finds the address of IO to a given file. This will only work
+        for binaries that haven't been stripped. Stripped binaries will require
+        something like IDA's Fast Library Identification and Recognition Technology
+        """
+        function_addresses = []
+        for a, f in self.cfg.kb.functions.items():
+            print(f.__dir__)
+            if (f.name == io_func_name):
+                function_addresses.append(a)
+        print(f'Function addresses are: {function_addresses}')
 
     def find_paths_to_auth_strings(self, sim, auth_strings):
         for auth_str in auth_strings:
@@ -31,6 +47,7 @@ class Analyser:
     def run_symbolic_execution(self):
         sim = self.project.factory.simgr(self.entry_state)
         self.find_paths_to_auth_strings(sim, self.authentication_identifiers["string"])
+        self.find_file_io("fopen", "help.txt")
 
     def parse_solution_dump(self, bytestring):
         """
