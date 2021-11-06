@@ -2,6 +2,49 @@ import angr
 import argparse
 
 
+class FileIODetector():
+    """
+    This object takes a simulator, a function address, and a filename
+    It will check if there's a state that reaches a function which operates
+    on a specific file given by filename.
+    """
+    def __init__(self, sim, func_addr, filename):
+        self.sim = sim
+        self.func_addr = func_addr
+        self.filename = filename
+
+    def file_io_func_state(self, state):
+        """
+        Function which represents the state at which the instruction pointer points
+        at the object's function address, and operates on the file defined by the object's
+        filename
+        """
+        if (state.ip.args[0] == self.func_addr):
+            # TODO: Implement check for RSI
+            if (state.mem[state.solver.eval(state.regs.r0)].string.concrete).decode("utf-8")\
+                == self.filename:
+                return True
+        return False
+
+    def step_until_func_addr_in_rip(self, sim, addr):
+        try:
+            while (sim.active[0].solver.eval(sim.active[0].regs.r15) != addr):
+                sim.step()
+                print(f"R15: {sim.active[0].regs.r15}, \
+                        evaluated: {sim.active[0].solver.eval(sim.active[0].regs.r15)}")
+            if (sim.active[0].solver.eval(sim.active[0].regs.r15) == addr):
+                print("Successfully stepped until r15 = function addr")
+            else:
+                print("Failed to step to function")
+        except:
+            print(f"Failed with sim.active {sim.active}")
+
+    def find(self):
+        self.sim.explore(find=self.file_io_func_state)
+        print(f"Sim found {self.sim.found}")
+        return self.sim.found[0].posix.dumps(0)
+
+
 class Analyser:
     def __init__(self, filename, authentication_identifiers):
         """
@@ -13,9 +56,23 @@ class Analyser:
         """
         self.filename = filename
         self.authentication_identifiers = authentication_identifiers
-        self.project = project = angr.Project(filename)
-        self.entry_state = project.factory.entry_state()
-        print(self.authentication_identifiers["string"][0])
+        self.project = angr.Project(filename)
+        self.entry_state = self.project.factory.entry_state()
+        self.cfg = self.project.analyses.CFG(fail_fast=True)
+
+    def find_func_addr(self, func_name):
+        """
+        io_funct_name : string name of function to identify
+        file_accessed : the filename of the file that the function operates on
+        Function that finds the address of IO to a given file. This will only work
+        for binaries that haven't been stripped. Stripped binaries will require
+        something like IDA's Fast Library Identification and Recognition Technology
+        """
+        function_addresses = []
+        for a, f in self.cfg.kb.functions.items():
+            if (f.name == func_name):
+                function_addresses.append(a)
+        return function_addresses
 
     def find_paths_to_auth_strings(self, sim, auth_strings):
         for auth_str in auth_strings:
@@ -23,14 +80,31 @@ class Analyser:
                     avoid=lambda s: b'Access denied' in s.posix.dumps(1))
             if sim.found:
                 access_state = sim.found[0]
-                print(f"Credentials for access string {auth_str}:\
+                print(f"Stdin resulting in printing of authentication string {auth_str}:\
                         {self.parse_solution_dump(access_state.posix.dumps(0))}")
             else:
                 print("No solution")
 
     def run_symbolic_execution(self):
         sim = self.project.factory.simgr(self.entry_state)
-        self.find_paths_to_auth_strings(sim, self.authentication_identifiers["string"])
+        if self.authentication_identifiers["file_operation"]:
+
+            for f_op in self.authentication_identifiers["file_operation"]:
+                if self.authentication_identifiers["file_operation"][f_op]:
+
+                    for f_string in self.authentication_identifiers["file_operation"][f_op]:
+                        func_addrs = self.find_func_addr(f_op)
+                        
+                        for func_addr in func_addrs:
+                            # Insansiate File IO object
+                            file_io_detector = FileIODetector(sim, func_addrs[0], f_string)
+                            sol = file_io_detector.find()
+                            print(f"Stdin resulting in {f_op} with file {f_string}: \
+                                {self.parse_solution_dump(sol)}")
+
+        if self.authentication_identifiers["string"]:
+            for auth_str in self.authentication_identifiers["string"]:
+                self.find_paths_to_auth_strings(sim, self.authentication_identifiers["string"])
 
     def parse_solution_dump(self, bytestring):
         """
@@ -71,8 +145,17 @@ def arg_parsing():
     parser = argparse.ArgumentParser()
     parser.add_argument('filename', nargs=1,
                         help='Filename of firmware to analyse')
+    parser.add_argument('--strings', nargs="+")
+    parser.add_argument('--fread', nargs="+")
+    parser.add_argument('--fwrite', nargs="+")
+    parser.add_argument('--fopen', nargs="+")
     args = parser.parse_args()
-    return args.filename[0]
+    return (args.filename,
+            {"string": [s for s in args.strings],
+                "file_operation": {"fread": args.fread,
+                                    "fwrite": args.fwrite,
+                                    "fopen": args.fopen}
+            })
 
 
 def read_bytes(filename):
@@ -82,8 +165,10 @@ def read_bytes(filename):
 
 
 def main():
-    filename = arg_parsing()
-    analyser = Analyser(filename, {"string": ["Access granted"]})
+    filename, auth_ids = arg_parsing()
+    print(auth_ids)
+
+    analyser = Analyser(filename[0], auth_ids)
     analyser.run_symbolic_execution()
 
 
