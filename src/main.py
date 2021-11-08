@@ -1,5 +1,6 @@
 import angr
 import argparse
+import socket
 
 
 class FileIODetector():
@@ -20,7 +21,6 @@ class FileIODetector():
         filename
         """
         if (state.ip.args[0] == self.func_addr):
-            # TODO: Implement check for RSI
             if (state.mem[state.solver.eval(state.regs.r0)].string.concrete).decode("utf-8")\
                 == self.filename:
                 return True
@@ -42,6 +42,35 @@ class FileIODetector():
     def find(self):
         self.sim.explore(find=self.file_io_func_state)
         print(f"Sim found {self.sim.found}")
+        return self.sim.found[0].posix.dumps(0)
+
+
+class NetworkDetection():
+    """
+    Object will take a function address representative of
+    the bind function. It will dump the sockaddr_in struct
+    and check if the sin_port is in the allowed_ports list
+    """
+    def __init__(self, sim, func_addr, allowed_ports):
+        self.sim = sim
+        self.func_addr = func_addr
+        self.allowed_ports = allowed_ports
+        limiter = angr.exploration_techniques.lengthlimiter.LengthLimiter(max_length=100, drop=True)
+        self.sim.use_technique(limiter)
+        angr.types.register_types(angr.types.parse_type('struct in_addr{ uint32_t s_addr; }'))
+        angr.types.register_types(angr.types.parse_type('struct sockaddr_in{ unsigned short sin_family; uint16_t sin_port; struct in_addr sin_addr; }'))
+    
+    def bind_func_state(self, state):
+        if (state.ip.args[0] == self.func_addr):
+            sockaddr_param = state.mem[state.solver.eval(state.regs.r1)].struct.sockaddr_in.concrete
+            print(f"Sockaddr_in: {socket.ntohs(sockaddr_param.sin_port)}")
+            # print("WHY GOD WHY GOD WHY GOD")
+            return True
+        return False
+
+    def find(self):
+        self.sim.explore(find=self.bind_func_state)
+        # print(f"Sim found {self.sim.found}")
         return self.sim.found[0].posix.dumps(0)
 
 
@@ -105,6 +134,10 @@ class Analyser:
         if self.authentication_identifiers["string"]:
             for auth_str in self.authentication_identifiers["string"]:
                 self.find_paths_to_auth_strings(sim, self.authentication_identifiers["string"])
+        
+        bind_addr = self.find_func_addr("bind")
+        netdetect = NetworkDetection(sim, bind_addr[0], [90])
+        netdetect.find()
 
     def parse_solution_dump(self, bytestring):
         """
@@ -151,7 +184,7 @@ def arg_parsing():
     parser.add_argument('--fopen', nargs="+")
     args = parser.parse_args()
     return (args.filename,
-            {"string": [s for s in args.strings],
+            {"string": args.strings,
                 "file_operation": {"fread": args.fread,
                                     "fwrite": args.fwrite,
                                     "fopen": args.fopen}
