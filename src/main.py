@@ -55,6 +55,7 @@ class NetworkDetection():
         self.sim = sim
         self.func_addr = func_addr
         self.allowed_ports = allowed_ports
+        self.found_undocumented_ports = []
         limiter = angr.exploration_techniques.lengthlimiter.LengthLimiter(max_length=100, drop=True)
         self.sim.use_technique(limiter)
         angr.types.register_types(angr.types.parse_type('struct in_addr{ uint32_t s_addr; }'))
@@ -63,15 +64,15 @@ class NetworkDetection():
     def bind_func_state(self, state):
         if (state.ip.args[0] == self.func_addr):
             sockaddr_param = state.mem[state.solver.eval(state.regs.r1)].struct.sockaddr_in.concrete
-            print(f"Sockaddr_in: {socket.ntohs(sockaddr_param.sin_port)}")
-            # print("WHY GOD WHY GOD WHY GOD")
-            return True
+            host_port = socket.ntohs(sockaddr_param.sin_port)
+            if host_port not in self.allowed_ports:
+                self.found_undocumented_ports.append(host_port)
+                return True
         return False
 
     def find(self):
         self.sim.explore(find=self.bind_func_state)
-        # print(f"Sim found {self.sim.found}")
-        return self.sim.found[0].posix.dumps(0)
+        return self.found_undocumented_ports
 
 
 class Analyser:
@@ -136,8 +137,9 @@ class Analyser:
                 self.find_paths_to_auth_strings(sim, self.authentication_identifiers["string"])
         
         bind_addr = self.find_func_addr("bind")
-        netdetect = NetworkDetection(sim, bind_addr[0], [90])
-        netdetect.find()
+        netdetect = NetworkDetection(sim, bind_addr[0], self.authentication_identifiers["allowed_ports"])
+        undocumented_ports = netdetect.find()
+        print(f"Undocumented network ports listening: {undocumented_ports}")
 
     def parse_solution_dump(self, bytestring):
         """
@@ -182,12 +184,16 @@ def arg_parsing():
     parser.add_argument('--fread', nargs="+")
     parser.add_argument('--fwrite', nargs="+")
     parser.add_argument('--fopen', nargs="+")
+    parser.add_argument('--allowed-ports', nargs="+")
     args = parser.parse_args()
+    get_ports = lambda ports : [int(p) for p in ports] if ports!=None else None
+
     return (args.filename,
             {"string": args.strings,
                 "file_operation": {"fread": args.fread,
                                     "fwrite": args.fwrite,
-                                    "fopen": args.fopen}
+                                    "fopen": args.fopen},
+                "allowed_ports": get_ports(args.allowed_ports)
             })
 
 
