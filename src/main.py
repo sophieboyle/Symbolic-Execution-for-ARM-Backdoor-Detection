@@ -59,8 +59,8 @@ class NetworkDetection():
     If the mode is sending, the allowed_ports is a list of tuples (IP, port)
     If mode is listening, the allowed_ports is a list of ports
     """
-    def __init__(self, sim, mode, func_addr, allowed_ports):
-        self.sim = sim
+    def __init__(self, project, entry_state, mode, func_addr, allowed_ports):
+        self.sim = project.factory.simgr(entry_state)
         self.mode = mode
         self.func_addr = func_addr
         self.allowed_ports = allowed_ports
@@ -173,21 +173,25 @@ class Analyser:
         # Passing the simulation manager to netdetectin first seems to prevent the sim manager from finding
         # states correctly when passed in again to netdetectout
         # Must find a way to copy sim manager
-        """
+        
         bind_addr = self.find_func_addr("bind")
         if bind_addr:
-            netdetectin = NetworkDetection(sim, "listening", bind_addr[0], self.authentication_identifiers["allowed_listening_ports"])
+            netdetectin = NetworkDetection(self.project, self.entry_state, "listening", bind_addr[0], self.authentication_identifiers["allowed_listening_ports"])
             undocumented_ports = netdetectin.find()
             print(f"Undocumented network ports listening: {undocumented_ports}")
-        """
+        
 
         connect_addr = self.find_func_addr("connect")
         if connect_addr:
+            undocumented_outbound_ports = []
             for addr in connect_addr:
-                netdetectout = NetworkDetection(sim, "sending", connect_addr[0], self.authentication_identifiers["allowed_outbound_ports"])
-                undocumented_ports_out = netdetectout.find()
-                if len(undocumented_ports_out) > 0:
-                    print(f"Undocumented network traffic outbound: {undocumented_ports_out}")
+                netdetectout = NetworkDetection(self.project, self.entry_state, "sending", connect_addr[0], self.authentication_identifiers["allowed_outbound_ports"])
+                netdetectout_results = netdetectout.find()
+                for result in netdetectout_results:
+                    if result not in undocumented_outbound_ports:
+                        undocumented_outbound_ports.append(result)
+            if len(undocumented_outbound_ports) > 0:
+                print(f"Undocumented network traffic outbound: {undocumented_outbound_ports}")
 
     def parse_solution_dump(self, bytestring):
         """
