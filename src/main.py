@@ -148,6 +148,18 @@ class Analyser:
                         {self.parse_solution_dump(access_state.posix.dumps(0))}")
             else:
                 print("No solution")
+        
+    def run_network_detections(self, mode, net_func, allowed_list):
+        func_addr = self.find_func_addr(net_func)
+        undocumented_net = []
+        if func_addr:
+            for addr in func_addr:
+                netdetect = NetworkDetection(self.project, self.entry_state, mode, addr, allowed_list)
+                results = netdetect.find()
+                for result in results:
+                    if result not in undocumented_net:
+                        undocumented_net.append(result)
+        return undocumented_net
 
     def run_symbolic_execution(self):
         sim = self.project.factory.simgr(self.entry_state)
@@ -169,11 +181,8 @@ class Analyser:
         if self.authentication_identifiers["string"]:
             for auth_str in self.authentication_identifiers["string"]:
                 self.find_paths_to_auth_strings(sim, self.authentication_identifiers["string"])
-
-        # Passing the simulation manager to netdetectin first seems to prevent the sim manager from finding
-        # states correctly when passed in again to netdetectout
-        # Must find a way to copy sim manager
         
+        """
         bind_addr = self.find_func_addr("bind")
         if bind_addr:
             undocumented_inbound_ports = []
@@ -198,6 +207,13 @@ class Analyser:
                         undocumented_outbound_ports.append(result)
             if len(undocumented_outbound_ports) > 0:
                 print(f"Undocumented network traffic outbound: {undocumented_outbound_ports}")
+        """
+
+        # Can decouple the mode and function, since function infers the mode
+        inbound_net = self.run_network_detections("listening", "bind", self.authentication_identifiers["allowed_listening_ports"])
+        outbound_net = self.run_network_detections("sending", "connect", self.authentication_identifiers["allowed_outbound_ports"])
+        print(f"Undocumented inbound networking: {inbound_net}")
+        print(f"Undocumented outbound networking: {outbound_net}")
 
     def parse_solution_dump(self, bytestring):
         """
