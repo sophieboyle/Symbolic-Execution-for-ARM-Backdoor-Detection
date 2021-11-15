@@ -1,6 +1,7 @@
 import angr
 import argparse
 import socket
+import struct
 
 
 class FileIODetector():
@@ -50,13 +51,25 @@ class NetworkDetection():
     Object will take a function address representative of
     the bind function. It will dump the sockaddr_in struct
     and check if the sin_port is in the allowed_ports list
+    
+    Mode option can choose between finding IP and ports to which outbound
+    traffic is sent (sending), or finding ports on which the
+    binary is listening (listening)
+
+    If the mode is sending, the allowed_ports is a list of tuples (IP, port)
+    If mode is listening, the allowed_ports is a list of ports
     """
-    def __init__(self, sim, func_addr, allowed_ports):
-        self.sim = sim
+    def __init__(self, project, entry_state, mode, func_addr, allowed_ports):
+        self.sim = project.factory.simgr(entry_state)
+        self.mode = mode
         self.func_addr = func_addr
         self.allowed_ports = allowed_ports
         self.found_undocumented_ports = []
-        limiter = angr.exploration_techniques.lengthlimiter.LengthLimiter(max_length=100, drop=True)
+
+        if mode != "sending" and mode != "listening":
+            raise ValueError("NetworkDetection mode needs to be either sending or listening")
+        
+        limiter = angr.exploration_techniques.lengthlimiter.LengthLimiter(max_length=1000, drop=True)
         self.sim.use_technique(limiter)
         angr.types.register_types(angr.types.parse_type('struct in_addr{ uint32_t s_addr; }'))
         angr.types.register_types(angr.types.parse_type('struct sockaddr_in{ unsigned short sin_family; uint16_t sin_port; struct in_addr sin_addr; }'))
@@ -69,9 +82,30 @@ class NetworkDetection():
                 self.found_undocumented_ports.append(host_port)
                 return True
         return False
+    
+    def connect_func_state(self, state):
+        if (state.ip.args[0] == self.func_addr):
+            print("Found connect function state")
+            sockaddr_param = state.mem[state.solver.eval(state.regs.r1)].struct.sockaddr_in.concrete
+            # The ip address in sin_addr.s_addr needs to be packed in little endian format
+            # despite the fact that inet_ntoa converts from network byte order (big endian)
+            # to a formatted IPv4 string. The register must store s_addr in little endian format
+            # Otherwise, setting struct.pack to pack in big endian format results in the IP address
+            # being printed backwards
+            server_ip = socket.inet_ntoa(struct.pack('<I', sockaddr_param.sin_addr.s_addr))
+            server_port = socket.ntohs(sockaddr_param.sin_port)
+            print(f"{server_ip}: {server_port}")
+            if (server_ip, server_port) not in self.allowed_ports:
+                self.found_undocumented_ports.append((server_ip, server_port))
+                return True
+            return True
+        return False
 
     def find(self):
-        self.sim.explore(find=self.bind_func_state)
+        if (self.mode == "listening"):
+            self.sim.explore(find=self.bind_func_state)
+        elif (self.mode == "sending"):
+            self.sim.explore(find=self.connect_func_state)
         return self.found_undocumented_ports
 
 
@@ -114,6 +148,18 @@ class Analyser:
                         {self.parse_solution_dump(access_state.posix.dumps(0))}")
             else:
                 print("No solution")
+        
+    def run_network_detections(self, mode, net_func, allowed_list):
+        func_addr = self.find_func_addr(net_func)
+        undocumented_net = []
+        if func_addr:
+            for addr in func_addr:
+                netdetect = NetworkDetection(self.project, self.entry_state, mode, addr, allowed_list)
+                results = netdetect.find()
+                for result in results:
+                    if result not in undocumented_net:
+                        undocumented_net.append(result)
+        return undocumented_net
 
     def run_symbolic_execution(self):
         sim = self.project.factory.simgr(self.entry_state)
@@ -136,10 +182,38 @@ class Analyser:
             for auth_str in self.authentication_identifiers["string"]:
                 self.find_paths_to_auth_strings(sim, self.authentication_identifiers["string"])
         
+        """
         bind_addr = self.find_func_addr("bind")
-        netdetect = NetworkDetection(sim, bind_addr[0], self.authentication_identifiers["allowed_ports"])
-        undocumented_ports = netdetect.find()
-        print(f"Undocumented network ports listening: {undocumented_ports}")
+        if bind_addr:
+            undocumented_inbound_ports = []
+            for addr in bind_addr:
+                netdetectin = NetworkDetection(self.project, self.entry_state, "listening", addr, self.authentication_identifiers["allowed_listening_ports"])
+                netdetectout_results = netdetectin.find()
+                for result in netdetectout_results:
+                    if result not in undocumented_inbound_ports:
+                        undocumented_inbound_ports.append(result)
+            if len(undocumented_inbound_ports) > 0:
+                print(f"Undocumented network ports listening: {undocumented_inbound_ports}")
+        
+
+        connect_addr = self.find_func_addr("connect")
+        if connect_addr:
+            undocumented_outbound_ports = []
+            for addr in connect_addr:
+                netdetectout = NetworkDetection(self.project, self.entry_state, "sending", addr, self.authentication_identifiers["allowed_outbound_ports"])
+                netdetectout_results = netdetectout.find()
+                for result in netdetectout_results:
+                    if result not in undocumented_outbound_ports:
+                        undocumented_outbound_ports.append(result)
+            if len(undocumented_outbound_ports) > 0:
+                print(f"Undocumented network traffic outbound: {undocumented_outbound_ports}")
+        """
+
+        # Can decouple the mode and function, since function infers the mode
+        inbound_net = self.run_network_detections("listening", "bind", self.authentication_identifiers["allowed_listening_ports"])
+        outbound_net = self.run_network_detections("sending", "connect", self.authentication_identifiers["allowed_outbound_ports"])
+        print(f"Undocumented inbound networking: {inbound_net}")
+        print(f"Undocumented outbound networking: {outbound_net}")
 
     def parse_solution_dump(self, bytestring):
         """
@@ -184,16 +258,21 @@ def arg_parsing():
     parser.add_argument('--fread', nargs="+")
     parser.add_argument('--fwrite', nargs="+")
     parser.add_argument('--fopen', nargs="+")
-    parser.add_argument('--allowed-ports', nargs="+")
+    parser.add_argument('--allowed-inbound-ports', nargs="+")
+    parser.add_argument('--allowed-outbound-ips', nargs="+")
+    parser.add_argument('--allowed-outbound-ports', nargs="+")
     args = parser.parse_args()
-    get_ports = lambda ports : [int(p) for p in ports] if ports!=None else None
+    get_listen_ports = lambda ports : [int(p) for p in ports] if ports!=None else []
+    get_outbound_ports = lambda ips, ports : zip(ips, ports) if ips != None and ports !=None else []
 
     return (args.filename,
             {"string": args.strings,
                 "file_operation": {"fread": args.fread,
                                     "fwrite": args.fwrite,
                                     "fopen": args.fopen},
-                "allowed_ports": get_ports(args.allowed_ports)
+                "allowed_listening_ports": get_listen_ports(args.allowed_inbound_ports),
+                "allowed_outbound_ports": get_outbound_ports(args.allowed_outbound_ips,
+                                                        args.allowed_outbound_ports),
             })
 
 
