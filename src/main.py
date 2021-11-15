@@ -176,16 +176,22 @@ class Analyser:
         
         bind_addr = self.find_func_addr("bind")
         if bind_addr:
-            netdetectin = NetworkDetection(self.project, self.entry_state, "listening", bind_addr[0], self.authentication_identifiers["allowed_listening_ports"])
-            undocumented_ports = netdetectin.find()
-            print(f"Undocumented network ports listening: {undocumented_ports}")
+            undocumented_inbound_ports = []
+            for addr in bind_addr:
+                netdetectin = NetworkDetection(self.project, self.entry_state, "listening", addr, self.authentication_identifiers["allowed_listening_ports"])
+                netdetectout_results = netdetectin.find()
+                for result in netdetectout_results:
+                    if result not in undocumented_inbound_ports:
+                        undocumented_inbound_ports.append(result)
+            if len(undocumented_inbound_ports) > 0:
+                print(f"Undocumented network ports listening: {undocumented_inbound_ports}")
         
 
         connect_addr = self.find_func_addr("connect")
         if connect_addr:
             undocumented_outbound_ports = []
             for addr in connect_addr:
-                netdetectout = NetworkDetection(self.project, self.entry_state, "sending", connect_addr[0], self.authentication_identifiers["allowed_outbound_ports"])
+                netdetectout = NetworkDetection(self.project, self.entry_state, "sending", addr, self.authentication_identifiers["allowed_outbound_ports"])
                 netdetectout_results = netdetectout.find()
                 for result in netdetectout_results:
                     if result not in undocumented_outbound_ports:
