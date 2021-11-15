@@ -1,6 +1,7 @@
 import angr
 import argparse
 import socket
+import struct
 
 
 class FileIODetector():
@@ -68,7 +69,7 @@ class NetworkDetection():
         if mode != "sending" and mode != "listening":
             raise ValueError("NetworkDetection mode needs to be either sending or listening")
         
-        limiter = angr.exploration_techniques.lengthlimiter.LengthLimiter(max_length=100, drop=True)
+        limiter = angr.exploration_techniques.lengthlimiter.LengthLimiter(max_length=1000, drop=True)
         self.sim.use_technique(limiter)
         angr.types.register_types(angr.types.parse_type('struct in_addr{ uint32_t s_addr; }'))
         angr.types.register_types(angr.types.parse_type('struct sockaddr_in{ unsigned short sin_family; uint16_t sin_port; struct in_addr sin_addr; }'))
@@ -84,15 +85,19 @@ class NetworkDetection():
     
     def connect_func_state(self, state):
         if (state.ip.args[0] == self.func_addr):
+            print("Found connect function state")
             sockaddr_param = state.mem[state.solver.eval(state.regs.r1)].struct.sockaddr_in.concrete
-            server_ip = sockaddr_param.sin_addr.s_addr
+            # The ip address in sin_addr.s_addr needs to be packed in little endian format
+            # despite the fact that inet_ntoa converts from network byte order (big endian)
+            # to a formatted IPv4 string. The register must store s_addr in little endian format
+            # Otherwise, setting struct.pack to pack in big endian format results in the IP address
+            # being printed backwards
+            server_ip = socket.inet_ntoa(struct.pack('<I', sockaddr_param.sin_addr.s_addr))
             server_port = socket.ntohs(sockaddr_param.sin_port)
             print(f"{server_ip}: {server_port}")
-            """
             if (server_ip, server_port) not in self.allowed_ports:
-                self.found_undocumented_ports.append(server_port)
+                self.found_undocumented_ports.append((server_ip, server_port))
                 return True
-            """
             return True
         return False
 
@@ -164,18 +169,25 @@ class Analyser:
         if self.authentication_identifiers["string"]:
             for auth_str in self.authentication_identifiers["string"]:
                 self.find_paths_to_auth_strings(sim, self.authentication_identifiers["string"])
-        
+
+        # Passing the simulation manager to netdetectin first seems to prevent the sim manager from finding
+        # states correctly when passed in again to netdetectout
+        # Must find a way to copy sim manager
+        """
         bind_addr = self.find_func_addr("bind")
         if bind_addr:
             netdetectin = NetworkDetection(sim, "listening", bind_addr[0], self.authentication_identifiers["allowed_listening_ports"])
             undocumented_ports = netdetectin.find()
             print(f"Undocumented network ports listening: {undocumented_ports}")
+        """
 
         connect_addr = self.find_func_addr("connect")
         if connect_addr:
-            netdetectout = NetworkDetection(sim, "sending", connect_addr[0], self.authentication_identifiers["allowed_outbound_ports"])
-            undocumented_ports_out = netdetectout.find()
-            print(f"Undocumented network traffic outbound: {undocumented_ports_out}")
+            for addr in connect_addr:
+                netdetectout = NetworkDetection(sim, "sending", connect_addr[0], self.authentication_identifiers["allowed_outbound_ports"])
+                undocumented_ports_out = netdetectout.find()
+                if len(undocumented_ports_out) > 0:
+                    print(f"Undocumented network traffic outbound: {undocumented_ports_out}")
 
     def parse_solution_dump(self, bytestring):
         """
@@ -224,8 +236,8 @@ def arg_parsing():
     parser.add_argument('--allowed-outbound-ips', nargs="+")
     parser.add_argument('--allowed-outbound-ports', nargs="+")
     args = parser.parse_args()
-    get_listen_ports = lambda ports : [int(p) for p in ports] if ports!=None else None
-    get_outbound_ports = lambda ips, ports : zip(ips, ports) if ips != None and ports !=None else None
+    get_listen_ports = lambda ports : [int(p) for p in ports] if ports!=None else []
+    get_outbound_ports = lambda ips, ports : zip(ips, ports) if ips != None and ports !=None else []
 
     return (args.filename,
             {"string": args.strings,
