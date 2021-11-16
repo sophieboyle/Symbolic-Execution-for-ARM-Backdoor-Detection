@@ -59,14 +59,17 @@ class NetworkDetection():
     If the mode is sending, the allowed_ports is a list of tuples (IP, port)
     If mode is listening, the allowed_ports is a list of ports
     """
-    def __init__(self, project, entry_state, mode, func_addr, allowed_ports):
+    def __init__(self, project, entry_state, func_name, func_addr, allowed_ports):
         self.sim = project.factory.simgr(entry_state)
-        self.mode = mode
+        self.func_name = func_name
         self.func_addr = func_addr
         self.allowed_ports = allowed_ports
         self.found_undocumented_ports = []
 
-        if mode != "sending" and mode != "listening":
+        self.implemented_functions = {"bind": self.bind_func_state,
+                                "connect": self.connect_func_state}
+
+        if func_name not in self.implemented_functions.keys():
             raise ValueError("NetworkDetection mode needs to be either sending or listening")
         
         limiter = angr.exploration_techniques.lengthlimiter.LengthLimiter(max_length=1000, drop=True)
@@ -102,10 +105,7 @@ class NetworkDetection():
         return False
 
     def find(self):
-        if (self.mode == "listening"):
-            self.sim.explore(find=self.bind_func_state)
-        elif (self.mode == "sending"):
-            self.sim.explore(find=self.connect_func_state)
+        self.sim.explore(find=self.implemented_functions[self.func_name])
         return self.found_undocumented_ports
 
 
@@ -149,12 +149,12 @@ class Analyser:
             else:
                 print("No solution")
         
-    def run_network_detections(self, mode, net_func, allowed_list):
+    def run_network_detections(self, net_func, allowed_list):
         func_addr = self.find_func_addr(net_func)
         undocumented_net = []
         if func_addr:
             for addr in func_addr:
-                netdetect = NetworkDetection(self.project, self.entry_state, mode, addr, allowed_list)
+                netdetect = NetworkDetection(self.project, self.entry_state, net_func, addr, allowed_list)
                 results = netdetect.find()
                 for result in results:
                     if result not in undocumented_net:
@@ -181,37 +181,10 @@ class Analyser:
         if self.authentication_identifiers["string"]:
             for auth_str in self.authentication_identifiers["string"]:
                 self.find_paths_to_auth_strings(sim, self.authentication_identifiers["string"])
-        
-        """
-        bind_addr = self.find_func_addr("bind")
-        if bind_addr:
-            undocumented_inbound_ports = []
-            for addr in bind_addr:
-                netdetectin = NetworkDetection(self.project, self.entry_state, "listening", addr, self.authentication_identifiers["allowed_listening_ports"])
-                netdetectout_results = netdetectin.find()
-                for result in netdetectout_results:
-                    if result not in undocumented_inbound_ports:
-                        undocumented_inbound_ports.append(result)
-            if len(undocumented_inbound_ports) > 0:
-                print(f"Undocumented network ports listening: {undocumented_inbound_ports}")
-        
-
-        connect_addr = self.find_func_addr("connect")
-        if connect_addr:
-            undocumented_outbound_ports = []
-            for addr in connect_addr:
-                netdetectout = NetworkDetection(self.project, self.entry_state, "sending", addr, self.authentication_identifiers["allowed_outbound_ports"])
-                netdetectout_results = netdetectout.find()
-                for result in netdetectout_results:
-                    if result not in undocumented_outbound_ports:
-                        undocumented_outbound_ports.append(result)
-            if len(undocumented_outbound_ports) > 0:
-                print(f"Undocumented network traffic outbound: {undocumented_outbound_ports}")
-        """
 
         # Can decouple the mode and function, since function infers the mode
-        inbound_net = self.run_network_detections("listening", "bind", self.authentication_identifiers["allowed_listening_ports"])
-        outbound_net = self.run_network_detections("sending", "connect", self.authentication_identifiers["allowed_outbound_ports"])
+        inbound_net = self.run_network_detections("bind", self.authentication_identifiers["allowed_listening_ports"])
+        outbound_net = self.run_network_detections("connect", self.authentication_identifiers["allowed_outbound_ports"])
         print(f"Undocumented inbound networking: {inbound_net}")
         print(f"Undocumented outbound networking: {outbound_net}")
 
