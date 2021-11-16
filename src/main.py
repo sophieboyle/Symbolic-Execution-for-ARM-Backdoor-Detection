@@ -65,11 +65,9 @@ class NetworkDetection():
         self.func_addr = func_addr
         self.allowed_ports = allowed_ports
         self.found_undocumented_ports = []
+        self.implemented_functions = ["bind", "connect"]
 
-        self.implemented_functions = {"bind": self.bind_func_state,
-                                "connect": self.connect_func_state}
-
-        if func_name not in self.implemented_functions.keys():
+        if func_name not in self.implemented_functions:
             raise ValueError("NetworkDetection mode needs to be either sending or listening")
         
         limiter = angr.exploration_techniques.lengthlimiter.LengthLimiter(max_length=1000, drop=True)
@@ -77,18 +75,8 @@ class NetworkDetection():
         angr.types.register_types(angr.types.parse_type('struct in_addr{ uint32_t s_addr; }'))
         angr.types.register_types(angr.types.parse_type('struct sockaddr_in{ unsigned short sin_family; uint16_t sin_port; struct in_addr sin_addr; }'))
     
-    def bind_func_state(self, state):
+    def net_func_state(self, state):
         if (state.ip.args[0] == self.func_addr):
-            sockaddr_param = state.mem[state.solver.eval(state.regs.r1)].struct.sockaddr_in.concrete
-            host_port = socket.ntohs(sockaddr_param.sin_port)
-            if host_port not in self.allowed_ports:
-                self.found_undocumented_ports.append(host_port)
-                return True
-        return False
-    
-    def connect_func_state(self, state):
-        if (state.ip.args[0] == self.func_addr):
-            print("Found connect function state")
             sockaddr_param = state.mem[state.solver.eval(state.regs.r1)].struct.sockaddr_in.concrete
             # The ip address in sin_addr.s_addr needs to be packed in little endian format
             # despite the fact that inet_ntoa converts from network byte order (big endian)
@@ -102,10 +90,10 @@ class NetworkDetection():
                 self.found_undocumented_ports.append((server_ip, server_port))
                 return True
             return True
-        return False
+        return False   
 
     def find(self):
-        self.sim.explore(find=self.implemented_functions[self.func_name])
+        self.sim.explore(find=self.net_func_state)
         return self.found_undocumented_ports
 
 
