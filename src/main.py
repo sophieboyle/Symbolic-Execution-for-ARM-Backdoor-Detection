@@ -1,3 +1,4 @@
+from logging import raiseExceptions
 import angr
 import argparse
 import socket
@@ -65,19 +66,27 @@ class NetworkDetection():
         self.func_addr = func_addr
         self.allowed_ports = allowed_ports
         self.found_undocumented_ports = []
-        self.implemented_functions = ["bind", "connect"]
 
-        if func_name not in self.implemented_functions:
-            raise ValueError("NetworkDetection mode needs to be either sending or listening")
-        
+        if func_name in ["bind", "connect"]:
+            self.arg_register = 1
+        elif func_name in ["recvfrom", "sendto"]:
+            self.arg_register = 4
+        else:
+            raiseExceptions("Unimplemented function name passed")
+
         limiter = angr.exploration_techniques.lengthlimiter.LengthLimiter(max_length=1000, drop=True)
         self.sim.use_technique(limiter)
         angr.types.register_types(angr.types.parse_type('struct in_addr{ uint32_t s_addr; }'))
         angr.types.register_types(angr.types.parse_type('struct sockaddr_in{ unsigned short sin_family; uint16_t sin_port; struct in_addr sin_addr; }'))
-    
+
     def net_func_state(self, state):
         if (state.ip.args[0] == self.func_addr):
-            sockaddr_param = state.mem[state.solver.eval(state.regs.r1)].struct.sockaddr_in.concrete
+            if self.arg_register == 1:
+                sockaddr_param = state.mem[state.solver.eval(state.regs.r1)].struct.sockaddr_in.concrete
+            elif self.arg_register == 4:
+                sockaddr_param = state.mem[state.solver.eval(state.regs.r4)].struct.sockaddr_in.concrete
+            else:
+                raiseExceptions("Unimplemented argument register")
             # The ip address in sin_addr.s_addr needs to be packed in little endian format
             # despite the fact that inet_ntoa converts from network byte order (big endian)
             # to a formatted IPv4 string. The register must store s_addr in little endian format
@@ -90,7 +99,7 @@ class NetworkDetection():
                 self.found_undocumented_ports.append((server_ip, server_port))
                 return True
             return True
-        return False   
+        return False
 
     def find(self):
         self.sim.explore(find=self.net_func_state)
@@ -173,8 +182,10 @@ class Analyser:
         # Can decouple the mode and function, since function infers the mode
         inbound_net = self.run_network_detections("bind", self.authentication_identifiers["allowed_listening_ports"])
         outbound_net = self.run_network_detections("connect", self.authentication_identifiers["allowed_outbound_ports"])
-        print(f"Undocumented inbound networking: {inbound_net}")
-        print(f"Undocumented outbound networking: {outbound_net}")
+        inbound_udp = self.run_network_detections("recvfrom", self.authentication_identifiers["allowed_listening_ports"])
+        outbound_udp = self.run_network_detections("sendto", self.authentication_identifiers["allowed_outbound_ports"])
+        print(f"Undocumented inbound networking -- tcp : {inbound_net} udp -- {inbound_udp}")
+        print(f"Undocumented outbound networking: {outbound_net} udp -- {outbound_udp}")
 
     def parse_solution_dump(self, bytestring):
         """
