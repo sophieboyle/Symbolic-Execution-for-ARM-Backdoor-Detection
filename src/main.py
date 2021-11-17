@@ -67,12 +67,16 @@ class NetworkDetection():
         self.allowed_ports = allowed_ports
         self.found_undocumented_ports = []
 
-        if func_name in ["bind", "connect"]:
+        if func_name in ["bind", "send"]:
             self.arg_register = 1
-        elif func_name in ["recvfrom", "sendto"]:
+            self.explore_to_state = self.net_func_state
+        elif func_name in ["sendto"]:
+            # Note: if IP dereferenced from sendto call is 0.0.0.0 on port 0, sockaddr for sendto is unknown
+            # Most likely dependent on recieving some external information of where to sendto
             self.arg_register = 4
+            self.explore_to_state = self.net_func_state
         else:
-            raiseExceptions("Unimplemented function name passed")
+            raise ValueError("Unimplemented function name passed")
 
         limiter = angr.exploration_techniques.lengthlimiter.LengthLimiter(max_length=1000, drop=True)
         self.sim.use_technique(limiter)
@@ -86,7 +90,7 @@ class NetworkDetection():
             elif self.arg_register == 4:
                 sockaddr_param = state.mem[state.solver.eval(state.regs.r4)].struct.sockaddr_in.concrete
             else:
-                raiseExceptions("Unimplemented argument register")
+                raise ValueError("Unimplemented argument register")
             # The ip address in sin_addr.s_addr needs to be packed in little endian format
             # despite the fact that inet_ntoa converts from network byte order (big endian)
             # to a formatted IPv4 string. The register must store s_addr in little endian format
@@ -145,12 +149,68 @@ class Analyser:
                         {self.parse_solution_dump(access_state.posix.dumps(0))}")
             else:
                 print("No solution")
+
+    def run_network_detection(self):
+        output_log = ""
+        # Check for instances of bind
+        bind_addrs = self.find_func_addr("bind")
+        if bind_addrs:
+            bind_info = self.investigate_network_functions("bind", bind_addrs, self.authentication_identifiers["allowed_listening_ports"])
+            output_log += f"Found {len(bind_addrs)} instances of bind()\nListening on ports {[info[1] for info in bind_info]}\n"
+        else:
+            output_log += "No instances of bind()\nNo listening ports detected\n"
         
-    def run_network_detections(self, net_func, allowed_list):
-        func_addr = self.find_func_addr(net_func)
+        output_log += "-" * 30 + "\n"
+
+        # Find connected sockets
+        connect_addrs = self.find_func_addr("connect")
+        if connect_addrs:
+            connect_info = self.investigate_network_functions("connect", connect_addrs, self.authentication_identifiers["allowed_outbound_ports"])
+            output_log += f"Found {len(connect_addrs)} instances of connect() \
+                            \nConnecting to the following addresses and ports {connect_info}\n"
+        else:
+            "No instances of connect()\nNo connected sockets detected. However, UDP packets may still be being sent.\n"
+
+        output_log += "-" * 30 + "\n"
+            
+        # Check if TCP: outbound TCP connections will have instances of send
+        output_log += "Outbound TCP Information:\n"
+        send_addrs = self.find_func_addr("send")
+        if send_addrs:
+            send_info = self.investigate_network_functions("send", send_addrs, self.authentication_identifiers["allowed_outbound_ports"])
+            output_log += f"Found {len(send_addrs)} instances of send() \
+                            \nSending TCP packets to the following addresses {send_info}\n"
+        else:
+            output_log+= "Found no instances of send()\n"
+
+        output_log += "-" * 30 + "\n"
+
+        # Check if UDP: outbound UDP packets will be sent via sendto()
+        output_log += "Outbound UDP Information\n"
+        sendto_addrs = self.find_func_addr("sendto")
+        if sendto_addrs:
+            sendto_info = self.investigate_network_functions("sendto", sendto_addrs, self.authentication_identifiers["allowed_outbound_ports"])
+            output_log += f"Found {len(sendto_addrs)} instances of sendto\nSending UDP packets to the following addresses {sendto_info}\n"
+        else:
+            output_log += "Found n instances of sendto()\n"
+
+        output_log += "-" * 30 + "\n"
+        
+        # Check for inbound UDP indications
+        output_log += "Inbound UDP Information - Indications of the binary expecting inbound UDP traffic\n"
+        recvfrom_addrs = self.find_func_addr("recvfrom")
+        if recvfrom_addrs:
+            output_log += f"Found {len(recvfrom_addrs)} instances of recvfrom. Expect inbound UDP traffic.\n"
+        else:
+            output_log += "No instances of recvfrom() found\n"
+
+        return output_log
+
+        
+    def investigate_network_functions(self, net_func, func_addrs, allowed_list):
         undocumented_net = []
-        if func_addr:
-            for addr in func_addr:
+        if func_addrs:
+            for addr in func_addrs:
                 netdetect = NetworkDetection(self.project, self.entry_state, net_func, addr, allowed_list)
                 results = netdetect.find()
                 for result in results:
@@ -180,12 +240,7 @@ class Analyser:
                 self.find_paths_to_auth_strings(sim, self.authentication_identifiers["string"])
 
         # Can decouple the mode and function, since function infers the mode
-        inbound_net = self.run_network_detections("bind", self.authentication_identifiers["allowed_listening_ports"])
-        outbound_net = self.run_network_detections("connect", self.authentication_identifiers["allowed_outbound_ports"])
-        inbound_udp = self.run_network_detections("recvfrom", self.authentication_identifiers["allowed_listening_ports"])
-        outbound_udp = self.run_network_detections("sendto", self.authentication_identifiers["allowed_outbound_ports"])
-        print(f"Undocumented inbound networking -- tcp : {inbound_net} udp -- {inbound_udp}")
-        print(f"Undocumented outbound networking: {outbound_net} udp -- {outbound_udp}")
+        print(self.run_network_detection())
 
     def parse_solution_dump(self, bytestring):
         """
