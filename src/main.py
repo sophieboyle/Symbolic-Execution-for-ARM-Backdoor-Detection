@@ -67,10 +67,10 @@ class NetworkDetection():
         self.allowed_ports = allowed_ports
         self.found_undocumented_ports = []
 
-        if func_name in ["bind", "send"]:
+        if func_name in ["bind", "connect"]:
             self.arg_register = 1
             self.explore_to_state = self.net_func_state
-        elif func_name in ["sendto"]:
+        elif func_name in ["send", "sendto"]:
             # Note: if IP dereferenced from sendto call is 0.0.0.0 on port 0, sockaddr for sendto is unknown
             # Most likely dependent on recieving some external information of where to sendto
             self.arg_register = 4
