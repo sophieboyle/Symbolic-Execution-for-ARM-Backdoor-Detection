@@ -4,6 +4,14 @@ import argparse
 import socket
 import struct
 
+socket_type_reference = {1: "SOCK_STREAM",
+                    2: "SOCK_DGRAM",
+                    3: "SOCK_RAW",
+                    4: "SOCK_RDM",
+                    5: "SOCK_SEQPACKET",
+                    6: "SOCK_DCCP",
+                    10: "SOCK_PACKET"}
+
 
 class FileIODetector():
     """
@@ -60,21 +68,20 @@ class NetworkDetection():
     If the mode is sending, the allowed_ports is a list of tuples (IP, port)
     If mode is listening, the allowed_ports is a list of ports
     """
-    def __init__(self, project, entry_state, func_name, func_addr, allowed_ports):
+    def __init__(self, project, entry_state, func_name, func_addr, allowed_ports, socket_table):
         self.sim = project.factory.simgr(entry_state)
         self.func_name = func_name
         self.func_addr = func_addr
         self.allowed_ports = allowed_ports
+        self.socket_table = socket_table
         self.found_undocumented_ports = []
 
         if func_name in ["bind", "connect"]:
             self.arg_register = 1
-            self.explore_to_state = self.net_func_state
         elif func_name in ["send", "sendto"]:
             # Note: if IP dereferenced from sendto call is 0.0.0.0 on port 0, sockaddr for sendto is unknown
             # Most likely dependent on recieving some external information of where to sendto
             self.arg_register = 4
-            self.explore_to_state = self.net_func_state
         else:
             raise ValueError("Unimplemented function name passed")
 
@@ -108,6 +115,27 @@ class NetworkDetection():
     def find(self):
         self.sim.explore(find=self.net_func_state)
         return self.found_undocumented_ports
+
+
+class SocketDetection():
+    def __init__(self, project, entry_state, sock_addr):
+        self.socket_fd = None
+        self.socket_type = None
+        self.sim = project.factory.simgr(entry_state)
+        self.sock_addr = sock_addr
+        
+    def socket_state(self, state):
+        if (state.ip.args[0] == self.sock_addr):
+            print("Found socket")
+            self.socket_type = state.mem[state.solver.eval(state.regs.r1)].int.concrete
+            print(self.socket_type)
+            return True
+        return False
+
+    def find_socket(self):
+        print("Finding socket")
+        self.sim.explore(find=self.socket_state)
+        return (self.socket_fd, self.socket_type)
 
 
 class Analyser:
@@ -206,17 +234,29 @@ class Analyser:
 
         return output_log
 
-        
     def investigate_network_functions(self, net_func, func_addrs, allowed_list):
         undocumented_net = []
         if func_addrs:
             for addr in func_addrs:
-                netdetect = NetworkDetection(self.project, self.entry_state, net_func, addr, allowed_list)
+                netdetect = NetworkDetection(self.project, self.entry_state, net_func, addr, allowed_list, self.socket_table)
                 results = netdetect.find()
                 for result in results:
                     if result not in undocumented_net:
                         undocumented_net.append(result)
         return undocumented_net
+    
+    def find_sockets(self):
+        # Check for sockets
+        sock_addrs = self.find_func_addr("socket")
+        print(f"sockaddrs: {sock_addrs}")
+        socket_table = {}
+        if sock_addrs:
+            for addr in sock_addrs:
+                sock_detector = SocketDetection(self.project, self.entry_state, addr)
+                socket_info = sock_detector.find_socket()
+                print(f"socket_info: {socket_info}")
+                socket_table[socket_info[0]] = socket_info[1]
+        return socket_table
 
     def run_symbolic_execution(self):
         sim = self.project.factory.simgr(self.entry_state)
@@ -239,8 +279,10 @@ class Analyser:
             for auth_str in self.authentication_identifiers["string"]:
                 self.find_paths_to_auth_strings(sim, self.authentication_identifiers["string"])
 
-        # Can decouple the mode and function, since function infers the mode
-        print(self.run_network_detection())
+        # Generate the socket table prior to running network detection
+        self.socket_table = self.find_sockets()
+        print(self.socket_table)
+        # print(self.run_network_detection())
 
     def parse_solution_dump(self, bytestring):
         """
