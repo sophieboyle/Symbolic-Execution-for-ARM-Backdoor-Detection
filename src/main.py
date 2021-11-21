@@ -104,6 +104,7 @@ class NetworkDetection():
             # Otherwise, setting struct.pack to pack in big endian format results in the IP address
             # being printed backwards
             server_ip = socket.inet_ntoa(struct.pack('<I', sockaddr_param.sin_addr.s_addr))
+            unformatted_port = sockaddr_param.sin_port
             server_port = socket.ntohs(sockaddr_param.sin_port)
             print(f"{server_ip}: {server_port}")
             if (server_ip, server_port) not in self.allowed_ports:
@@ -128,7 +129,7 @@ class SocketDetection():
         if (state.ip.args[0] == self.sock_addr):
             print("Found socket")
             self.socket_type = state.mem[state.solver.eval(state.regs.r1)].int.concrete
-            print(self.socket_type)
+            print(f"Socket type: {self.socket_type}")
             return True
         return False
 
@@ -149,9 +150,9 @@ class Analyser:
         """
         self.filename = filename
         self.authentication_identifiers = authentication_identifiers
-        self.project = angr.Project(filename)
+        self.project = angr.Project(filename, load_options={'auto_load_libs': False})
         self.entry_state = self.project.factory.entry_state()
-        self.cfg = self.project.analyses.CFG(fail_fast=True)
+        self.cfg = self.project.analyses.CFGEmulated(fail_fast=True)
 
     def find_func_addr(self, func_name):
         """
@@ -161,11 +162,9 @@ class Analyser:
         for binaries that haven't been stripped. Stripped binaries will require
         something like IDA's Fast Library Identification and Recognition Technology
         """
-        function_addresses = []
-        for a, f in self.cfg.kb.functions.items():
-            if (f.name == func_name):
-                function_addresses.append(a)
-        return function_addresses
+        nodes = [n for n in self.cfg.nodes() if n.name == func_name]
+        call_addresses = [n.predecessors[0].predecessors[0].addr for n in nodes]  # The addresses in main which call the given function
+        return call_addresses
 
     def find_paths_to_auth_strings(self, sim, auth_strings):
         for auth_str in auth_strings:
@@ -241,10 +240,10 @@ class Analyser:
                 netdetect = NetworkDetection(self.project, self.entry_state, net_func, addr, allowed_list, self.socket_table)
                 results = netdetect.find()
                 for result in results:
-                    if result not in undocumented_net:
-                        undocumented_net.append(result)
+                    # if result not in undocumented_net:
+                    undocumented_net.append(result)
         return undocumented_net
-    
+
     def find_sockets(self):
         # Check for sockets
         sock_addrs = self.find_func_addr("socket")
@@ -282,7 +281,7 @@ class Analyser:
         # Generate the socket table prior to running network detection
         self.socket_table = self.find_sockets()
         print(self.socket_table)
-        # print(self.run_network_detection())
+        print(self.run_network_detection())
 
     def parse_solution_dump(self, bytestring):
         """
