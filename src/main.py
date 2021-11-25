@@ -92,6 +92,9 @@ class NetworkDetection():
 
     def net_func_state(self, state):
         if (state.ip.args[0] == self.func_addr):
+            self.sim.step()
+            state = self.sim.active[0]
+
             if self.arg_register == 1:
                 sockaddr_param = state.mem[state.solver.eval(state.regs.r1)].struct.sockaddr_in.concrete
             elif self.arg_register == 4:
@@ -114,7 +117,7 @@ class NetworkDetection():
         return False
 
     def find(self):
-        self.sim.explore(find=self.net_func_state)
+        self.sim.explore(find=self.net_func_state, num_find=3)
         return self.found_undocumented_ports
 
 
