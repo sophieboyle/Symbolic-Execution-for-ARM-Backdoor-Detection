@@ -75,6 +75,7 @@ class NetworkDetection():
         self.allowed_ports = allowed_ports
         self.socket_table = socket_table
         self.found_undocumented_ports = []
+        self.socket = None
 
         if func_name in ["bind", "connect"]:
             self.arg_register = 1
@@ -94,6 +95,8 @@ class NetworkDetection():
         if (state.ip.args[0] == self.func_addr):
             self.sim.step()
             state = self.sim.active[0]
+
+            self.socket = state.solver.eval(state.regs.r0)
 
             if self.arg_register == 1:
                 sockaddr_param = state.mem[state.solver.eval(state.regs.r1)].struct.sockaddr_in.concrete
@@ -134,6 +137,11 @@ class SocketDetection():
             self.sim.step()
             state = self.sim.active[0]
             self.socket_type = state.solver.eval(state.regs.r1)
+            # Step until end of function to find return value
+            self.sim.step()
+            self.sim.step()
+            state = self.sim.active[0]
+            self.socket_fd = state.solver.eval(state.regs.r0)
             return True
         return False
 
