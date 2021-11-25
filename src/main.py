@@ -199,7 +199,7 @@ class Analyser:
             output_log += f"Found {len(connect_addrs)} instances of connect() \
                             \nConnecting to the following addresses and ports {connect_info}\n"
         else:
-            "No instances of connect()\nNo connected sockets detected. However, UDP packets may still be being sent.\n"
+            output_log += "No instances of connect()\nNo connected sockets detected. However, UDP packets may still be being sent.\n"
 
         output_log += "-" * 30 + "\n"
             
