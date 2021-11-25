@@ -125,19 +125,19 @@ class SocketDetection():
     def __init__(self, project, entry_state, sock_addr):
         self.socket_fd = None
         self.socket_type = None
+        self.project = project
         self.sim = project.factory.simgr(entry_state)
         self.sock_addr = sock_addr
         
     def socket_state(self, state):
         if (state.ip.args[0] == self.sock_addr):
-            print("Found socket")
-            self.socket_type = state.mem[state.solver.eval(state.regs.r1)].int.concrete
-            print(f"Socket type: {self.socket_type}")
+            self.sim.step()
+            state = self.sim.active[0]
+            self.socket_type = state.solver.eval(state.regs.r1)
             return True
         return False
 
     def find_socket(self):
-        print("Finding socket")
         self.sim.explore(find=self.socket_state)
         return (self.socket_fd, self.socket_type)
 
