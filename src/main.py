@@ -73,8 +73,9 @@ class NetworkDetection():
         self.func_addr = func_addr
         self.allowed_ports = allowed_ports
         self.socket_table = socket_table
-        self.found_undocumented_ports = []
         self.socket = None
+        self.ip = None
+        self.port = None
 
         if func_name in ["bind", "connect"]:
             self.arg_register = 1
@@ -112,15 +113,17 @@ class NetworkDetection():
             server_port = socket.ntohs(sockaddr_param.sin_port)
 
             if (server_ip, server_port) not in self.allowed_ports:
-                self.found_undocumented_ports.append((server_ip, server_port))
+                self.ip = server_ip
+                self.port = server_port
                 return True
             return True
         return False
 
     def find(self):
         self.sim.explore(find=self.net_func_state, num_find=3)
-        # Using the socket table, identify which data stream is being used
-        return self.found_undocumented_ports, self.socket
+        return {"ip": self.ip,
+                "port": self.port,
+                "socket": self.socket}
 
 
 class SocketDetection():
@@ -188,67 +191,35 @@ class Analyser:
                 print("No solution")
 
     def enter_socket_info(self, func_call, info):
-        self.socket_table[info[0]]["function_calls"][func_call] += 1
-        if info[1][0][0] != '0.0.0.0':
-            self.socket_table[info[0]]["ip"] = info[1][0]
-        if info[1][0][1] != 0:
-            self.socket_table[info[0]]["port"] = info[1][0][1]
+        self.socket_table[info["socket"]]["function_calls"][func_call] += 1
+        if info["ip"] != '0.0.0.0':
+            self.socket_table[info["socket"]]["ip"] = info["ip"]
+        if info["port"] != 0:
+            self.socket_table[info["socket"]]["port"] = info["port"]
 
     def run_network_detection(self):
-        output_log = ""
         # Check for instances of bind
         bind_addrs = self.find_func_addr("bind")
         if bind_addrs:
-            bind_info = self.investigate_network_functions("bind", bind_addrs, self.authentication_identifiers["allowed_listening_ports"])
-            output_log += f"Found {len(bind_addrs)} instances of bind()\nListening on ports {bind_info}\n"
-            for info in bind_info:
-                self.enter_socket_info('bind', info)
-        else:
-            output_log += "No instances of bind()\nNo listening ports detected\n"
-        
-        output_log += "-" * 30 + "\n"
+            self.investigate_network_functions("bind", bind_addrs, self.authentication_identifiers["allowed_listening_ports"])
 
         # Find connected sockets
         connect_addrs = self.find_func_addr("connect")
         if connect_addrs:
-            connect_info = self.investigate_network_functions("connect", connect_addrs, self.authentication_identifiers["allowed_outbound_ports"])
-            output_log += f"Found {len(connect_addrs)} instances of connect() \
-                            \nConnecting to the following addresses and ports {connect_info}\n"
-            for info in connect_info:
-                self.enter_socket_info('connect', info)
-        else:
-            output_log += "No instances of connect()\nNo connected sockets detected. However, UDP packets may still be being sent.\n"
+            self.investigate_network_functions("connect", connect_addrs, self.authentication_identifiers["allowed_outbound_ports"])
 
-        output_log += "-" * 30 + "\n"
-            
         # Check if TCP: outbound TCP connections will have instances of send
-        output_log += "Outbound TCP Information:\n"
         send_addrs = self.find_func_addr("send")
         if send_addrs:
-            send_info = self.investigate_network_functions("send", send_addrs, self.authentication_identifiers["allowed_outbound_ports"])
-            output_log += f"Found {len(send_addrs)} instances of send() \
-                            \nSending TCP packets to the following addresses {send_info}\n"
-            for info in send_info:
-                self.enter_socket_info('send', info)
-        else:
-            output_log+= "Found no instances of send()\n"
-
-        output_log += "-" * 30 + "\n"
+            self.investigate_network_functions("send", send_addrs, self.authentication_identifiers["allowed_outbound_ports"])
 
         # Check if UDP: outbound UDP packets will be sent via sendto()
-        output_log += "Outbound UDP Information\n"
         sendto_addrs = self.find_func_addr("sendto")
         if sendto_addrs:
-            sendto_info = self.investigate_network_functions("sendto", sendto_addrs, self.authentication_identifiers["allowed_outbound_ports"])
-            output_log += f"Found {len(sendto_addrs)} instances of sendto\nSending UDP packets to the following addresses {sendto_info}\n"
-            for info in sendto_info:
-                self.enter_socket_info('sendto', info)
-        else:
-            output_log += "Found n instances of sendto()\n"
+            self.investigate_network_functions("sendto", sendto_addrs, self.authentication_identifiers["allowed_outbound_ports"])
 
-        output_log += "-" * 30 + "\n"
-        
         # Check for inbound UDP indications
+        output_log = ""
         output_log += "Inbound UDP Information - Indications of the binary expecting inbound UDP traffic\n"
         recvfrom_addrs = self.find_func_addr("recvfrom")
         if recvfrom_addrs:
@@ -259,15 +230,11 @@ class Analyser:
         return output_log
 
     def investigate_network_functions(self, net_func, func_addrs, allowed_list):
-        undocumented_net = []
         if func_addrs:
             for addr in func_addrs:
                 netdetect = NetworkDetection(self.project, self.entry_state, net_func, addr, allowed_list, self.socket_table)
-                undocumented_ports, func_socket = netdetect.find()
-                for result in undocumented_ports:
-                    # if result not in undocumented_net:
-                    undocumented_net.append((func_socket, undocumented_ports))
-        return undocumented_net
+                result = netdetect.find()
+                self.enter_socket_info(net_func, result)
 
     def find_sockets(self):
         # Check for sockets
