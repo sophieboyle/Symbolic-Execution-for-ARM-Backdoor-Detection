@@ -236,6 +236,29 @@ class Analyser:
                 result = netdetect.find()
                 self.enter_socket_info(net_func, result)
 
+    def output_network_information(self):
+        for i in self.socket_table.keys():
+            print('-' * 30 + '\n')
+            print(f"Socket {i}: \n"
+                  f"Type: {self.socket_table[i]['type']}\n"
+                  f"IP: {self.socket_table[i]['ip']}\n"
+                  f"Port: {self.socket_table[i]['port']}")
+            if self.socket_table[i]["function_calls"]["bind"] > 0 \
+                    and self.socket_table[i]["function_calls"]["connect"]==0:
+                print(f"Socket is listening for inbound traffic.")
+            elif self.socket_table[i]["function_calls"]["connect"] > 0 \
+                    and self.socket_table[i]["function_calls"]["bind"] == 0:
+                print(f"Socket is connecting to send outbound traffic.")
+            elif self.socket_table[i]["function_calls"]["bind"] > 0\
+                    and self.socket_table[i]["function_calls"]["connect"] > 0:
+                print(f"Socket is both bound and connecting. Unconfirmed behaviour")
+            else:
+                print("Socket does not knowingly bind or connect. Check for usages of sendto or recvfrom.\n")
+            print(f"\nDetailed network function information:")
+            for f in self.socket_table[i]["function_calls"].keys():
+                print(f"Instances of {f}: {self.socket_table[i]['function_calls'][f]}")
+
+
     def find_sockets(self):
         # Check for sockets
         sock_addrs = self.find_func_addr("socket")
@@ -281,6 +304,7 @@ class Analyser:
         print(self.socket_table)
         print(self.run_network_detection())
         print(self.socket_table)
+        self.output_network_information()
 
     def parse_solution_dump(self, bytestring):
         """
