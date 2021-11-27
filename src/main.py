@@ -4,14 +4,13 @@ import argparse
 import socket
 import struct
 
-socket_type_reference = {1: "SOCK_STREAM",
-                    2: "SOCK_DGRAM",
+socket_type_reference = {1: "TCP (SOCK_STREAM)",
+                    2: "UDP (SOCK_DGRAM)",
                     3: "SOCK_RAW",
                     4: "SOCK_RDM",
                     5: "SOCK_SEQPACKET",
                     6: "SOCK_DCCP",
                     10: "SOCK_PACKET"}
-
 
 class FileIODetector():
     """
@@ -110,9 +109,8 @@ class NetworkDetection():
             # Otherwise, setting struct.pack to pack in big endian format results in the IP address
             # being printed backwards
             server_ip = socket.inet_ntoa(struct.pack('<I', sockaddr_param.sin_addr.s_addr))
-            unformatted_port = sockaddr_param.sin_port
             server_port = socket.ntohs(sockaddr_param.sin_port)
-            print(f"{server_ip}: {server_port}")
+
             if (server_ip, server_port) not in self.allowed_ports:
                 self.found_undocumented_ports.append((server_ip, server_port))
                 return True
@@ -121,7 +119,9 @@ class NetworkDetection():
 
     def find(self):
         self.sim.explore(find=self.net_func_state, num_find=3)
-        return self.found_undocumented_ports
+        # Using the socket table, identify which data stream is being used
+        data_stream = socket_type_reference[self.socket_table[self.socket]]
+        return self.found_undocumented_ports, data_stream
 
 
 class SocketDetection():
@@ -194,7 +194,7 @@ class Analyser:
         bind_addrs = self.find_func_addr("bind")
         if bind_addrs:
             bind_info = self.investigate_network_functions("bind", bind_addrs, self.authentication_identifiers["allowed_listening_ports"])
-            output_log += f"Found {len(bind_addrs)} instances of bind()\nListening on ports {[info[1] for info in bind_info]}\n"
+            output_log += f"Found {len(bind_addrs)} instances of bind()\nListening on ports {bind_info}\n"
         else:
             output_log += "No instances of bind()\nNo listening ports detected\n"
         
@@ -249,10 +249,10 @@ class Analyser:
         if func_addrs:
             for addr in func_addrs:
                 netdetect = NetworkDetection(self.project, self.entry_state, net_func, addr, allowed_list, self.socket_table)
-                results = netdetect.find()
-                for result in results:
+                undocumented_ports, data_stream = netdetect.find()
+                for result in undocumented_ports:
                     # if result not in undocumented_net:
-                    undocumented_net.append(result)
+                    undocumented_net.append((undocumented_ports, data_stream))
         return undocumented_net
 
     def find_sockets(self):
