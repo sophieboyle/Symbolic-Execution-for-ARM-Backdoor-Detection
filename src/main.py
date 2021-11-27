@@ -120,8 +120,7 @@ class NetworkDetection():
     def find(self):
         self.sim.explore(find=self.net_func_state, num_find=3)
         # Using the socket table, identify which data stream is being used
-        data_stream = socket_type_reference[self.socket_table[self.socket]]
-        return self.found_undocumented_ports, data_stream
+        return self.found_undocumented_ports, self.socket
 
 
 class SocketDetection():
@@ -188,6 +187,13 @@ class Analyser:
             else:
                 print("No solution")
 
+    def enter_socket_info(self, func_call, info):
+        self.socket_table[info[0]]["function_calls"][func_call] += 1
+        if info[1][0][0] != '0.0.0.0':
+            self.socket_table[info[0]]["ip"] = info[1][0]
+        if info[1][0][1] != 0:
+            self.socket_table[info[0]]["port"] = info[1][0][1]
+
     def run_network_detection(self):
         output_log = ""
         # Check for instances of bind
@@ -195,6 +201,8 @@ class Analyser:
         if bind_addrs:
             bind_info = self.investigate_network_functions("bind", bind_addrs, self.authentication_identifiers["allowed_listening_ports"])
             output_log += f"Found {len(bind_addrs)} instances of bind()\nListening on ports {bind_info}\n"
+            for info in bind_info:
+                self.enter_socket_info('bind', info)
         else:
             output_log += "No instances of bind()\nNo listening ports detected\n"
         
@@ -206,6 +214,8 @@ class Analyser:
             connect_info = self.investigate_network_functions("connect", connect_addrs, self.authentication_identifiers["allowed_outbound_ports"])
             output_log += f"Found {len(connect_addrs)} instances of connect() \
                             \nConnecting to the following addresses and ports {connect_info}\n"
+            for info in connect_info:
+                self.enter_socket_info('connect', info)
         else:
             output_log += "No instances of connect()\nNo connected sockets detected. However, UDP packets may still be being sent.\n"
 
@@ -218,6 +228,8 @@ class Analyser:
             send_info = self.investigate_network_functions("send", send_addrs, self.authentication_identifiers["allowed_outbound_ports"])
             output_log += f"Found {len(send_addrs)} instances of send() \
                             \nSending TCP packets to the following addresses {send_info}\n"
+            for info in send_info:
+                self.enter_socket_info('send', info)
         else:
             output_log+= "Found no instances of send()\n"
 
@@ -229,6 +241,8 @@ class Analyser:
         if sendto_addrs:
             sendto_info = self.investigate_network_functions("sendto", sendto_addrs, self.authentication_identifiers["allowed_outbound_ports"])
             output_log += f"Found {len(sendto_addrs)} instances of sendto\nSending UDP packets to the following addresses {sendto_info}\n"
+            for info in sendto_info:
+                self.enter_socket_info('sendto', info)
         else:
             output_log += "Found n instances of sendto()\n"
 
@@ -249,10 +263,10 @@ class Analyser:
         if func_addrs:
             for addr in func_addrs:
                 netdetect = NetworkDetection(self.project, self.entry_state, net_func, addr, allowed_list, self.socket_table)
-                undocumented_ports, data_stream = netdetect.find()
+                undocumented_ports, func_socket = netdetect.find()
                 for result in undocumented_ports:
                     # if result not in undocumented_net:
-                    undocumented_net.append((undocumented_ports, data_stream))
+                    undocumented_net.append((func_socket, undocumented_ports))
         return undocumented_net
 
     def find_sockets(self):
@@ -265,7 +279,13 @@ class Analyser:
                 sock_detector = SocketDetection(self.project, self.entry_state, addr)
                 socket_info = sock_detector.find_socket()
                 print(f"socket_info: {socket_info}")
-                socket_table[socket_info[0]] = socket_info[1]
+                socket_table[socket_info[0]] = {"type": socket_type_reference[socket_info[1]],
+                                                "ip": None,
+                                                "port": None,
+                                                "function_calls": {"bind": 0,
+                                                                   "connect": 0,
+                                                                   "send": 0,
+                                                                   "sendto": 0}}
         return socket_table
 
     def run_symbolic_execution(self):
@@ -293,6 +313,7 @@ class Analyser:
         self.socket_table = self.find_sockets()
         print(self.socket_table)
         print(self.run_network_detection())
+        print(self.socket_table)
 
     def parse_solution_dump(self, bytestring):
         """
