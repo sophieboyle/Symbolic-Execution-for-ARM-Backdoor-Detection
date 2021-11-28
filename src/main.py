@@ -83,6 +83,8 @@ class NetworkDetection():
             # Note: if IP dereferenced from sendto call is 0.0.0.0 on port 0, sockaddr for sendto is unknown
             # Most likely dependent on recieving some external information of where to sendto
             self.arg_register = 4
+        elif func_name in ["recvfrom"]:
+            self.arg_register = None
         else:
             raise ValueError("Unimplemented function name passed")
 
@@ -102,6 +104,9 @@ class NetworkDetection():
                 sockaddr_param = state.mem[state.solver.eval(state.regs.r1)].struct.sockaddr_in.concrete
             elif self.arg_register == 4:
                 sockaddr_param = state.mem[state.solver.eval(state.regs.r4)].struct.sockaddr_in.concrete
+            elif self.arg_register is None:
+                # Get no ip or port information
+                return True
             else:
                 raise ValueError("Unimplemented argument register")
             # The ip address in sin_addr.s_addr needs to be packed in little endian format
@@ -192,9 +197,9 @@ class Analyser:
 
     def enter_socket_info(self, func_call, info):
         self.socket_table[info["socket"]]["function_calls"][func_call] += 1
-        if info["ip"] != '0.0.0.0':
+        if info["ip"] != '0.0.0.0' and info["ip"] is not None:
             self.socket_table[info["socket"]]["ip"] = info["ip"]
-        if info["port"] != 0:
+        if info["port"] != 0 and info["port"] is not None:
             self.socket_table[info["socket"]]["port"] = info["port"]
 
     def run_network_detection(self):
@@ -219,15 +224,10 @@ class Analyser:
             self.investigate_network_functions("sendto", sendto_addrs, self.authentication_identifiers["allowed_outbound_ports"])
 
         # Check for inbound UDP indications
-        output_log = ""
-        output_log += "Inbound UDP Information - Indications of the binary expecting inbound UDP traffic\n"
         recvfrom_addrs = self.find_func_addr("recvfrom")
         if recvfrom_addrs:
-            output_log += f"Found {len(recvfrom_addrs)} instances of recvfrom. Expect inbound UDP traffic.\n"
-        else:
-            output_log += "No instances of recvfrom() found\n"
-
-        return output_log
+            self.investigate_network_functions("recvfrom", recvfrom_addrs,
+                                               self.authentication_identifiers["allowed_outbound_ports"])
 
     def investigate_network_functions(self, net_func, func_addrs, allowed_list):
         if func_addrs:
@@ -258,7 +258,6 @@ class Analyser:
             for f in self.socket_table[i]["function_calls"].keys():
                 print(f"Instances of {f}: {self.socket_table[i]['function_calls'][f]}")
 
-
     def find_sockets(self):
         # Check for sockets
         sock_addrs = self.find_func_addr("socket")
@@ -275,7 +274,8 @@ class Analyser:
                                                 "function_calls": {"bind": 0,
                                                                    "connect": 0,
                                                                    "send": 0,
-                                                                   "sendto": 0}}
+                                                                   "sendto": 0,
+                                                                   "recvfrom": 0}}
         return socket_table
 
     def run_symbolic_execution(self):
@@ -301,8 +301,7 @@ class Analyser:
 
         # Generate the socket table prior to running network detection
         self.socket_table = self.find_sockets()
-        print(self.socket_table)
-        print(self.run_network_detection())
+        self.run_network_detection()
         print(self.socket_table)
         self.output_network_information()
 
