@@ -54,7 +54,7 @@ class FileIODetector():
         return self.sim.found[0].posix.dumps(0)
 
 
-class NetworkDetection():
+class NetworkDetection:
     """
     Object will take a function address representative of
     the bind function. It will dump the sockaddr_in struct
@@ -94,7 +94,7 @@ class NetworkDetection():
         angr.types.register_types(angr.types.parse_type('struct sockaddr_in{ unsigned short sin_family; uint16_t sin_port; struct in_addr sin_addr; }'))
 
     def net_func_state(self, state):
-        if (state.ip.args[0] == self.func_addr):
+        if state.ip.args[0] == self.func_addr:
             self.sim.step()
             state = self.sim.active[0]
 
@@ -131,7 +131,7 @@ class NetworkDetection():
                 "socket": self.socket}
 
 
-class SocketDetection():
+class SocketDetection:
     def __init__(self, project, entry_state, sock_addr):
         self.socket_fd = None
         self.socket_type = None
@@ -155,6 +155,97 @@ class SocketDetection():
     def find_socket(self):
         self.sim.explore(find=self.socket_state)
         return (self.socket_fd, self.socket_type)
+
+
+class NetworkDriver:
+    def __init__(self, project, entry_state, addresses, allowed_ports):
+        self.project = project
+        self.entry_state = entry_state
+        self.addresses = addresses
+        self.allowed_inbound, self.allowed_outbound = allowed_ports
+        self.socket_table = self.find_sockets()
+
+    def enter_socket_info(self, func_call, info):
+        self.socket_table[info["socket"]]["function_calls"][func_call] += 1
+        if info["ip"] != '0.0.0.0' and info["ip"] is not None:
+            self.socket_table[info["socket"]]["ip"] = info["ip"]
+        if info["port"] != 0 and info["port"] is not None:
+            self.socket_table[info["socket"]]["port"] = info["port"]
+
+    def run_network_detection(self):
+        # Check for instances of bind
+        bind_addrs = self.addresses["bind"]
+        if bind_addrs:
+            self.investigate_network_functions("bind", bind_addrs, self.allowed_inbound)
+
+        # Find connected sockets
+        connect_addrs = self.addresses["connect"]
+        if connect_addrs:
+            self.investigate_network_functions("connect", connect_addrs, self.allowed_outbound)
+
+        # Check if TCP: outbound TCP connections will have instances of send
+        send_addrs = self.addresses["send"]
+        if send_addrs:
+            self.investigate_network_functions("send", send_addrs, self.allowed_outbound)
+
+        # Check if UDP: outbound UDP packets will be sent via sendto()
+        sendto_addrs = self.addresses["sendto"]
+        if sendto_addrs:
+            self.investigate_network_functions("sendto", sendto_addrs, self.allowed_outbound)
+
+        # Check for inbound UDP indications
+        recvfrom_addrs = self.addresses["recvfrom"]
+        if recvfrom_addrs:
+            self.investigate_network_functions("recvfrom", recvfrom_addrs, self.allowed_inbound)
+
+    def investigate_network_functions(self, net_func, func_addrs, allowed_list):
+        if func_addrs:
+            for addr in func_addrs:
+                netdetect = NetworkDetection(self.project, self.entry_state, net_func, addr,
+                                             allowed_list, self.socket_table)
+                result = netdetect.find()
+                self.enter_socket_info(net_func, result)
+
+    def output_network_information(self):
+        for i in self.socket_table.keys():
+            print('-' * 30 + '\n')
+            print(f"Socket {i}: \n"
+                  f"Type: {self.socket_table[i]['type']}\n"
+                  f"IP: {self.socket_table[i]['ip']}\n"
+                  f"Port: {self.socket_table[i]['port']}")
+            if self.socket_table[i]["function_calls"]["bind"] > 0 \
+                    and self.socket_table[i]["function_calls"]["connect"]==0:
+                print(f"Socket is listening for inbound traffic.")
+            elif self.socket_table[i]["function_calls"]["connect"] > 0 \
+                    and self.socket_table[i]["function_calls"]["bind"] == 0:
+                print(f"Socket is connecting to send outbound traffic.")
+            elif self.socket_table[i]["function_calls"]["bind"] > 0\
+                    and self.socket_table[i]["function_calls"]["connect"] > 0:
+                print(f"Socket is both bound and connecting. Unconfirmed behaviour")
+            else:
+                print("Socket does not knowingly bind or connect. Check for usages of sendto or recvfrom.\n")
+            print(f"\nDetailed network function information:")
+            for f in self.socket_table[i]["function_calls"].keys():
+                print(f"Instances of {f}: {self.socket_table[i]['function_calls'][f]}")
+
+    def find_sockets(self):
+        # Check for sockets
+        sock_addrs = self.addresses["socket"]
+        socket_table = {}
+        if sock_addrs:
+            for addr in sock_addrs:
+                sock_detector = SocketDetection(self.project, self.entry_state, addr)
+                socket_info = sock_detector.find_socket()
+                print(f"socket_info: {socket_info}")
+                socket_table[socket_info[0]] = {"type": socket_type_reference[socket_info[1]],
+                                                "ip": None,
+                                                "port": None,
+                                                "function_calls": {"bind": 0,
+                                                                   "connect": 0,
+                                                                   "send": 0,
+                                                                   "sendto": 0,
+                                                                   "recvfrom": 0}}
+        return socket_table
 
 
 class Analyser:
@@ -195,89 +286,6 @@ class Analyser:
             else:
                 print("No solution")
 
-    def enter_socket_info(self, func_call, info):
-        self.socket_table[info["socket"]]["function_calls"][func_call] += 1
-        if info["ip"] != '0.0.0.0' and info["ip"] is not None:
-            self.socket_table[info["socket"]]["ip"] = info["ip"]
-        if info["port"] != 0 and info["port"] is not None:
-            self.socket_table[info["socket"]]["port"] = info["port"]
-
-    def run_network_detection(self):
-        # Check for instances of bind
-        bind_addrs = self.find_func_addr("bind")
-        if bind_addrs:
-            self.investigate_network_functions("bind", bind_addrs, self.authentication_identifiers["allowed_listening_ports"])
-
-        # Find connected sockets
-        connect_addrs = self.find_func_addr("connect")
-        if connect_addrs:
-            self.investigate_network_functions("connect", connect_addrs, self.authentication_identifiers["allowed_outbound_ports"])
-
-        # Check if TCP: outbound TCP connections will have instances of send
-        send_addrs = self.find_func_addr("send")
-        if send_addrs:
-            self.investigate_network_functions("send", send_addrs, self.authentication_identifiers["allowed_outbound_ports"])
-
-        # Check if UDP: outbound UDP packets will be sent via sendto()
-        sendto_addrs = self.find_func_addr("sendto")
-        if sendto_addrs:
-            self.investigate_network_functions("sendto", sendto_addrs, self.authentication_identifiers["allowed_outbound_ports"])
-
-        # Check for inbound UDP indications
-        recvfrom_addrs = self.find_func_addr("recvfrom")
-        if recvfrom_addrs:
-            self.investigate_network_functions("recvfrom", recvfrom_addrs,
-                                               self.authentication_identifiers["allowed_outbound_ports"])
-
-    def investigate_network_functions(self, net_func, func_addrs, allowed_list):
-        if func_addrs:
-            for addr in func_addrs:
-                netdetect = NetworkDetection(self.project, self.entry_state, net_func, addr, allowed_list, self.socket_table)
-                result = netdetect.find()
-                self.enter_socket_info(net_func, result)
-
-    def output_network_information(self):
-        for i in self.socket_table.keys():
-            print('-' * 30 + '\n')
-            print(f"Socket {i}: \n"
-                  f"Type: {self.socket_table[i]['type']}\n"
-                  f"IP: {self.socket_table[i]['ip']}\n"
-                  f"Port: {self.socket_table[i]['port']}")
-            if self.socket_table[i]["function_calls"]["bind"] > 0 \
-                    and self.socket_table[i]["function_calls"]["connect"]==0:
-                print(f"Socket is listening for inbound traffic.")
-            elif self.socket_table[i]["function_calls"]["connect"] > 0 \
-                    and self.socket_table[i]["function_calls"]["bind"] == 0:
-                print(f"Socket is connecting to send outbound traffic.")
-            elif self.socket_table[i]["function_calls"]["bind"] > 0\
-                    and self.socket_table[i]["function_calls"]["connect"] > 0:
-                print(f"Socket is both bound and connecting. Unconfirmed behaviour")
-            else:
-                print("Socket does not knowingly bind or connect. Check for usages of sendto or recvfrom.\n")
-            print(f"\nDetailed network function information:")
-            for f in self.socket_table[i]["function_calls"].keys():
-                print(f"Instances of {f}: {self.socket_table[i]['function_calls'][f]}")
-
-    def find_sockets(self):
-        # Check for sockets
-        sock_addrs = self.find_func_addr("socket")
-        print(f"sockaddrs: {sock_addrs}")
-        socket_table = {}
-        if sock_addrs:
-            for addr in sock_addrs:
-                sock_detector = SocketDetection(self.project, self.entry_state, addr)
-                socket_info = sock_detector.find_socket()
-                print(f"socket_info: {socket_info}")
-                socket_table[socket_info[0]] = {"type": socket_type_reference[socket_info[1]],
-                                                "ip": None,
-                                                "port": None,
-                                                "function_calls": {"bind": 0,
-                                                                   "connect": 0,
-                                                                   "send": 0,
-                                                                   "sendto": 0,
-                                                                   "recvfrom": 0}}
-        return socket_table
-
     def run_symbolic_execution(self):
         sim = self.project.factory.simgr(self.entry_state)
         if self.authentication_identifiers["file_operation"]:
@@ -299,11 +307,19 @@ class Analyser:
             for auth_str in self.authentication_identifiers["string"]:
                 self.find_paths_to_auth_strings(sim, self.authentication_identifiers["string"])
 
-        # Generate the socket table prior to running network detection
-        self.socket_table = self.find_sockets()
-        self.run_network_detection()
-        print(self.socket_table)
-        self.output_network_information()
+        # Run network detection
+        net_addresses = {"socket": self.find_func_addr('socket'),
+                         "bind": self.find_func_addr('bind'),
+                         "connect": self.find_func_addr("connect"),
+                         "send": self.find_func_addr("send"),
+                         "sendto": self.find_func_addr("sendto"),
+                         "recvfrom": self.find_func_addr("recvfrom")}
+        net_driver = NetworkDriver(self.project, self.entry_state, net_addresses,
+                                  (self.authentication_identifiers["allowed_listening_ports"],
+                                   self.authentication_identifiers["allowed_outbound_ports"]))
+        net_driver.run_network_detection()
+        net_driver.output_network_information()
+
 
     def parse_solution_dump(self, bytestring):
         """
