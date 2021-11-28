@@ -100,15 +100,33 @@ class NetworkDetection:
 
             self.socket = state.solver.eval(state.regs.r0)
 
-            if self.arg_register == 1:
+            if self.func_name in ["bind", "connect"]:
+                # Get IP and port from r1
                 sockaddr_param = state.mem[state.solver.eval(state.regs.r1)].struct.sockaddr_in.concrete
-            elif self.arg_register == 4:
-                sockaddr_param = state.mem[state.solver.eval(state.regs.r4)].struct.sockaddr_in.concrete
-            elif self.arg_register is None:
-                # Get no ip or port information
+            elif self.func_name in ["send"]:
+                # IP and port is associated with the socket
+                self.ip = self.socket_table[self.socket]["ip"]
+                self.port = self.socket_table[self.socket]["port"]
+                return True
+            elif self.func_name in ["sendto"]:
+                # Determine if sendto() is in connection or connectionless mode
+                # If in connection mode, get IP and port from socket's connect call
+                # If in connectionless mode, get IP and port from r4
+                if self.socket_table[self.socket]["type"] in [socket_type_reference[1], socket_type_reference[5]]:
+                    # Connection mode
+                    self.ip = self.socket_table[self.socket]["ip"]
+                    self.port = self.socket_table[self.socket]["port"]
+                    return True
+                else:
+                    sockaddr_param = state.mem[state.solver.eval(state.regs.r4)].struct.sockaddr_in.concrete
+            elif self.func_name in ["recvfrom"]:
+                # Get ip and port information from socket
+                self.ip = self.socket_table[self.socket]["ip"]
+                self.port = self.socket_table[self.socket]["port"]
                 return True
             else:
                 raise ValueError("Unimplemented argument register")
+
             # The ip address in sin_addr.s_addr needs to be packed in little endian format
             # despite the fact that inet_ntoa converts from network byte order (big endian)
             # to a formatted IPv4 string. The register must store s_addr in little endian format
@@ -158,19 +176,42 @@ class SocketDetection:
 
 
 class NetworkDriver:
+    """
+        Produces a network table of the format
+        { (ip, port):
+            {'bind': [SOCKET_TYPE],
+            'connect': [SOCKET_TYPE],
+            'send':, [SOCKET_TYPE],
+            'sendto': [SOCKET_TYPE],
+            'recvfrom': [SOCKET_TYPE]
+        }
+    """
     def __init__(self, project, entry_state, addresses, allowed_ports):
         self.project = project
         self.entry_state = entry_state
         self.addresses = addresses
         self.allowed_inbound, self.allowed_outbound = allowed_ports
         self.socket_table = self.find_sockets()
+        self.network_table = {}
 
-    def enter_socket_info(self, func_call, info):
+    def update_socket_info(self, func_call, info):
         self.socket_table[info["socket"]]["function_calls"][func_call] += 1
-        if info["ip"] != '0.0.0.0' and info["ip"] is not None:
-            self.socket_table[info["socket"]]["ip"] = info["ip"]
-        if info["port"] != 0 and info["port"] is not None:
-            self.socket_table[info["socket"]]["port"] = info["port"]
+        # Only update IP and port information if connect or bind
+        if func_call in ["connect", "bind"]:
+            if info["ip"] is not None:
+                self.socket_table[info["socket"]]["ip"] = info["ip"]
+            if info["port"] != 0 and info["port"] is not None:
+                self.socket_table[info["socket"]]["port"] = info["port"]
+
+    def update_network_table(self, func_call, info):
+        addr = (info["ip"], info["port"])
+        if addr not in self.network_table.keys():
+            self.network_table[addr] = {'bind': [],
+                                        'connect': [],
+                                        'send': [],
+                                        'sendto': [],
+                                        'recvfrom': []}
+        self.network_table[addr][func_call].append(self.socket_table[info["socket"]]["type"])
 
     def run_network_detection(self):
         # Check for instances of bind
@@ -204,29 +245,30 @@ class NetworkDriver:
                 netdetect = NetworkDetection(self.project, self.entry_state, net_func, addr,
                                              allowed_list, self.socket_table)
                 result = netdetect.find()
-                self.enter_socket_info(net_func, result)
+                self.update_socket_info(net_func, result)
+                self.update_network_table(net_func, result)
 
     def output_network_information(self):
-        for i in self.socket_table.keys():
+        print(self.network_table)
+        for addr in self.network_table.keys():
             print('-' * 30 + '\n')
-            print(f"Socket {i}: \n"
-                  f"Type: {self.socket_table[i]['type']}\n"
-                  f"IP: {self.socket_table[i]['ip']}\n"
-                  f"Port: {self.socket_table[i]['port']}")
-            if self.socket_table[i]["function_calls"]["bind"] > 0 \
-                    and self.socket_table[i]["function_calls"]["connect"]==0:
-                print(f"Socket is listening for inbound traffic.")
-            elif self.socket_table[i]["function_calls"]["connect"] > 0 \
-                    and self.socket_table[i]["function_calls"]["bind"] == 0:
-                print(f"Socket is connecting to send outbound traffic.")
-            elif self.socket_table[i]["function_calls"]["bind"] > 0\
-                    and self.socket_table[i]["function_calls"]["connect"] > 0:
+            net_info = self.network_table[addr]
+            print(f"IP: {addr[0]}\n"
+                  f"Port: {addr[1]}")
+            if len(net_info["bind"]) > 0 and len(net_info["connect"]) == 0:
+                print(f"Type: {net_info['bind'][0]}")
+                print("Listening for inbound traffic.")
+            elif len(net_info["connect"]) > 0 and len(net_info["bind"]) == 0:
+                print(f"Type: {net_info['connect'][0]}")
+                print("Connecting to send outbound traffic.")
+            elif len(net_info["bind"]) > 0 and len(net_info["connect"]) > 0:
+                print(f"Type: {net_info['bind'][0]}")
                 print(f"Socket is both bound and connecting. Unconfirmed behaviour")
             else:
                 print("Socket does not knowingly bind or connect. Check for usages of sendto or recvfrom.\n")
             print(f"\nDetailed network function information:")
-            for f in self.socket_table[i]["function_calls"].keys():
-                print(f"Instances of {f}: {self.socket_table[i]['function_calls'][f]}")
+            for func in net_info.keys():
+                print(f"Instances of {func}: {len(net_info[func])}, TYPES: {net_info[func]}")
 
     def find_sockets(self):
         # Check for sockets
