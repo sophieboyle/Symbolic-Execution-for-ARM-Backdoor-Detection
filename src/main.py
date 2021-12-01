@@ -193,6 +193,14 @@ class NetworkDriver:
         self.allowed_inbound, self.allowed_outbound = allowed_ports
         self.socket_table = self.find_sockets()
         self.network_table = {}
+        self.malicious_ips = self.get_malicious_net('../resources/bad-ips.csv')
+        self.malicious_ports = self.get_malicious_net('../resources/bad-ports.csv')
+
+    def get_malicious_net(self, filename):
+        with open(filename, 'r') as f:
+            f.readline()
+            netlist = f.readlines()
+        return netlist
 
     def update_socket_info(self, func_call, info):
         self.socket_table[info["socket"]]["function_calls"][func_call] += 1
