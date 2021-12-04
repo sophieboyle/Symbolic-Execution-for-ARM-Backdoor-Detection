@@ -83,6 +83,7 @@ class NetworkDetection:
         self.socket = None
         self.ip = None
         self.port = None
+        self.size = None
 
         if func_name in ["bind", "connect"]:
             self.arg_register = 1
@@ -111,11 +112,15 @@ class NetworkDetection:
                 # Get IP and port from r1
                 sockaddr_param = state.mem[state.solver.eval(state.regs.r1)].struct.sockaddr_in.concrete
             elif self.func_name in ["send"]:
+                # Get the size of the transmission
+                self.size = state.solver.eval(state.regs.r2)
                 # IP and port is associated with the socket
                 self.ip = self.socket_table[self.socket]["ip"]
                 self.port = self.socket_table[self.socket]["port"]
                 return True
             elif self.func_name in ["sendto"]:
+                # Get the size of the transmission
+                self.size = state.solver.eval(state.regs.r2)
                 # Determine if sendto() is in connection or connectionless mode
                 # If in connection mode, get IP and port from socket's connect call
                 # If in connectionless mode, get IP and port from r4
@@ -127,6 +132,8 @@ class NetworkDetection:
                 else:
                     sockaddr_param = state.mem[state.solver.eval(state.regs.r4)].struct.sockaddr_in.concrete
             elif self.func_name in ["recvfrom"]:
+                # Also get the size of the transmission
+                self.size = state.solver.eval(state.regs.r2)
                 # Get ip and port information from socket
                 self.ip = self.socket_table[self.socket]["ip"]
                 self.port = self.socket_table[self.socket]["port"]
@@ -153,7 +160,8 @@ class NetworkDetection:
         self.sim.explore(find=self.net_func_state, num_find=3)
         return {"ip": self.ip,
                 "port": self.port,
-                "socket": self.socket}
+                "socket": self.socket,
+                "size": self.size}
 
 
 class SocketDetection:
@@ -227,7 +235,11 @@ class NetworkDriver:
                                         'send': [],
                                         'sendto': [],
                                         'recvfrom': []}
-        self.network_table[addr][func_call].append(self.socket_table[info["socket"]]["type"])
+        if func_call in ["bind", "connect"]:
+            self.network_table[addr][func_call].append(self.socket_table[info["socket"]]["type"])
+        elif func_call in ["send", "sendto", "recvfrom"]:
+            self.network_table[addr][func_call].append((self.socket_table[info["socket"]]["type"],
+                                                        info["size"]))
 
     def run_network_detection(self):
         # Check for instances of bind
@@ -296,7 +308,12 @@ class NetworkDriver:
                 print("Socket does not knowingly bind or connect. Check for usages of sendto or recvfrom.\n")
             print(f"\nDetailed network function information:")
             for func in net_info.keys():
-                print(f"Instances of {func}: {len(net_info[func])}, TYPES: {net_info[func]}")
+                if func in ["bind", "connect"]:
+                    print(f"Instances of {func}: {len(net_info[func])}, TYPES: {net_info[func]}")
+                if func in ["send", "sendto", "recvfrom"]:
+                    print(f"Instances of {func}: {len(net_info[func])}, "
+                          f"TYPES: {[i[0] for i in net_info[func]]}, "
+                          f"MESSAGE SIZES: {[i[1] for i in net_info[func]]}")
 
     def find_sockets(self):
         # Check for sockets
