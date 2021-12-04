@@ -207,7 +207,7 @@ class NetworkDriver:
     def get_malicious_net(self, filename):
         with open(filename, 'r') as f:
             f.readline()
-            netlist = f.readlines()
+            netlist = f.read().splitlines()
         return netlist
 
     def update_socket_info(self, func_call, info):
@@ -264,6 +264,18 @@ class NetworkDriver:
                 self.update_socket_info(net_func, result)
                 self.update_network_table(net_func, result)
 
+    def prune_non_malicious_comms(self):
+        for addr in self.network_table.copy().keys():
+            # If the communication is outbound, check the IP
+            if (len(self.network_table[addr]['connect']) > 0) and (addr[0] not in self.malicious_ips):
+                del self.network_table[addr]
+                continue
+            # If the communication is inbound, check the port it is listening on
+            if (len(self.network_table[addr]['bind']) > 0) and (addr[1] not in self.malicious_ports):
+                del self.network_table[addr]
+                continue
+        return
+
     def output_network_information(self):
         print(self.network_table)
         for addr in self.network_table.keys():
@@ -318,8 +330,6 @@ class Analyser:
         self.filename = filename
         self.authentication_identifiers = authentication_identifiers
         self.project = angr.Project(filename, load_options={'auto_load_libs': False})
-        # self.project = angr.Project(filename, exclude_sim_procedures_list=['socket'])
-        #self.project = angr.Project(filename)
         i = self.project.is_symbol_hooked("socket")
         self.entry_state = self.project.factory.entry_state()
         self.cfg = self.project.analyses.CFGEmulated(fail_fast=True)
@@ -379,6 +389,7 @@ class Analyser:
                                   (self.authentication_identifiers["allowed_listening_ports"],
                                    self.authentication_identifiers["allowed_outbound_ports"]))
         net_driver.run_network_detection()
+        # net_driver.prune_non_malicious_comms()
         net_driver.output_network_information()
 
     def parse_solution_dump(self, bytestring):
