@@ -54,6 +54,13 @@ class FileIODetector():
         return self.sim.found[0].posix.dumps(0)
 
 
+class InetAddr(angr.SimProcedure):
+    def run(self, addr):
+        ip_string = self.state.mem[self.state.solver.eval(addr.to_claripy())].string.concrete.decode('utf-8')
+        ip_int = struct.unpack("<I", socket.inet_aton(ip_string))[0]
+        return ip_int
+
+
 class NetworkDetection:
     """
     Object will take a function address representative of
@@ -188,6 +195,7 @@ class NetworkDriver:
     """
     def __init__(self, project, entry_state, addresses, allowed_ports):
         self.project = project
+        self.project.hook_symbol('inet_addr', InetAddr())
         self.entry_state = entry_state
         self.addresses = addresses
         self.allowed_inbound, self.allowed_outbound = allowed_ports
@@ -310,6 +318,9 @@ class Analyser:
         self.filename = filename
         self.authentication_identifiers = authentication_identifiers
         self.project = angr.Project(filename, load_options={'auto_load_libs': False})
+        # self.project = angr.Project(filename, exclude_sim_procedures_list=['socket'])
+        #self.project = angr.Project(filename)
+        i = self.project.is_symbol_hooked("socket")
         self.entry_state = self.project.factory.entry_state()
         self.cfg = self.project.analyses.CFGEmulated(fail_fast=True)
 
@@ -369,7 +380,6 @@ class Analyser:
                                    self.authentication_identifiers["allowed_outbound_ports"]))
         net_driver.run_network_detection()
         net_driver.output_network_information()
-
 
     def parse_solution_dump(self, bytestring):
         """
