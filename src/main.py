@@ -190,6 +190,34 @@ class SocketDetection:
         return (self.socket_fd, self.socket_type)
 
 
+class AcceptDetection:
+    def __init__(self, project, entry_state, sock_addr, socket_table):
+        self.socket_table = socket_table
+        self.socket_fd = None
+        self.socket_type = None
+        self.project = project
+        self.sim = project.factory.simgr(entry_state)
+        self.sock_addr = sock_addr
+
+    def socket_state(self, state):
+        if (state.ip.args[0] == self.sock_addr):
+            self.sim.step()
+            state = self.sim.active[0]
+            # Can automatically assign the socket type as SOCK_STREAM
+            self.socket_type = 1
+            # Step until end of function to find return value
+            self.sim.step()
+            self.sim.step()
+            state = self.sim.active[0]
+            self.socket_fd = state.solver.eval(state.regs.r0)
+            return True
+        return False
+
+    def find_socket(self):
+        self.sim.explore(find=self.socket_state)
+        return (self.socket_fd, self.socket_type)
+
+
 class NetworkDriver:
     """
         Produces a network table of the format
@@ -300,6 +328,8 @@ class NetworkDriver:
             net_info = self.network_table[addr]
             print(f"IP: {addr[0]}\n"
                   f"Port: {addr[1]}")
+            if addr[0] is None and addr[1] is None:
+                print(f"No IP and Port information was found. The IP and Port is likely resolved dynamically.")
             if len(net_info["bind"]) > 0 and len(net_info["connect"]) == 0:
                 print(f"Type: {net_info['bind'][0]}")
                 print("Listening for inbound traffic.")
@@ -310,7 +340,7 @@ class NetworkDriver:
                 print(f"Type: {net_info['bind'][0]}")
                 print(f"Socket is both bound and connecting. Unconfirmed behaviour")
             else:
-                print("Socket does not knowingly bind or connect. Check for usages of sendto or recvfrom.\n")
+                print("Socket does not knowingly bind or connect. Check for usages of sendto or recvfrom.")
             print(f"\nDetailed network function information:")
             for func in net_info.keys():
                 if func in ["bind", "connect"]:
@@ -328,6 +358,22 @@ class NetworkDriver:
             for addr in sock_addrs:
                 sock_detector = SocketDetection(self.project, self.entry_state, addr)
                 socket_info = sock_detector.find_socket()
+                print(f"socket_info: {socket_info}")
+                socket_table[socket_info[0]] = {"type": socket_type_reference[socket_info[1]],
+                                                "ip": None,
+                                                "port": None,
+                                                "function_calls": {"bind": 0,
+                                                                   "connect": 0,
+                                                                   "send": 0,
+                                                                   "sendto": 0,
+                                                                   "recvfrom": 0,
+                                                                   "recv": 0}}
+
+        accept_addrs = self.addresses["accept"]
+        if accept_addrs:
+            for addr in accept_addrs:
+                accept_detector = AcceptDetection(self.project, self.entry_state, addr, socket_table)
+                socket_info = accept_detector.find_socket()
                 print(f"socket_info: {socket_info}")
                 socket_table[socket_info[0]] = {"type": socket_type_reference[socket_info[1]],
                                                 "ip": None,
@@ -403,6 +449,7 @@ class Analyser:
 
         # Run network detection
         net_addresses = {"socket": self.find_func_addr('socket'),
+                         "accept": self.find_func_addr('accept'),
                          "bind": self.find_func_addr('bind'),
                          "connect": self.find_func_addr("connect"),
                          "send": self.find_func_addr("send"),
