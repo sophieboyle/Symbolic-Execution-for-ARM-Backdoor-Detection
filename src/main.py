@@ -91,7 +91,7 @@ class NetworkDetection:
             # Note: if IP dereferenced from sendto call is 0.0.0.0 on port 0, sockaddr for sendto is unknown
             # Most likely dependent on recieving some external information of where to sendto
             self.arg_register = 4
-        elif func_name in ["recvfrom"]:
+        elif func_name in ["recvfrom", "recv"]:
             self.arg_register = None
         else:
             raise ValueError("Unimplemented function name passed")
@@ -131,7 +131,7 @@ class NetworkDetection:
                     return True
                 else:
                     sockaddr_param = state.mem[state.solver.eval(state.regs.r4)].struct.sockaddr_in.concrete
-            elif self.func_name in ["recvfrom"]:
+            elif self.func_name in ["recvfrom", "recv"]:
                 # Also get the size of the transmission
                 self.size = state.solver.eval(state.regs.r2)
                 # Get ip and port information from socket
@@ -234,10 +234,11 @@ class NetworkDriver:
                                         'connect': [],
                                         'send': [],
                                         'sendto': [],
-                                        'recvfrom': []}
+                                        'recvfrom': [],
+                                        'recv': []}
         if func_call in ["bind", "connect"]:
             self.network_table[addr][func_call].append(self.socket_table[info["socket"]]["type"])
-        elif func_call in ["send", "sendto", "recvfrom"]:
+        elif func_call in ["send", "sendto", "recvfrom", "recv"]:
             self.network_table[addr][func_call].append((self.socket_table[info["socket"]]["type"],
                                                         info["size"]))
 
@@ -256,6 +257,10 @@ class NetworkDriver:
         send_addrs = self.addresses["send"]
         if send_addrs:
             self.investigate_network_functions("send", send_addrs, self.allowed_outbound)
+
+        recv_addrs = self.addresses["recv"]
+        if recv_addrs:
+            self.investigate_network_functions("recv", recv_addrs, self.allowed_inbound)
 
         # Check if UDP: outbound UDP packets will be sent via sendto()
         sendto_addrs = self.addresses["sendto"]
@@ -310,7 +315,7 @@ class NetworkDriver:
             for func in net_info.keys():
                 if func in ["bind", "connect"]:
                     print(f"Instances of {func}: {len(net_info[func])}, TYPES: {net_info[func]}")
-                if func in ["send", "sendto", "recvfrom"]:
+                if func in ["send", "sendto", "recvfrom", "recv"]:
                     print(f"Instances of {func}: {len(net_info[func])}, "
                           f"TYPES: {[i[0] for i in net_info[func]]}, "
                           f"MESSAGE SIZES: {[i[1] for i in net_info[func]]}")
@@ -331,7 +336,8 @@ class NetworkDriver:
                                                                    "connect": 0,
                                                                    "send": 0,
                                                                    "sendto": 0,
-                                                                   "recvfrom": 0}}
+                                                                   "recvfrom": 0,
+                                                                   "recv": 0}}
         return socket_table
 
 
@@ -401,7 +407,8 @@ class Analyser:
                          "connect": self.find_func_addr("connect"),
                          "send": self.find_func_addr("send"),
                          "sendto": self.find_func_addr("sendto"),
-                         "recvfrom": self.find_func_addr("recvfrom")}
+                         "recvfrom": self.find_func_addr("recvfrom"),
+                         "recv": self.find_func_addr("recv")}
         net_driver = NetworkDriver(self.project, self.entry_state, net_addresses,
                                   (self.authentication_identifiers["allowed_listening_ports"],
                                    self.authentication_identifiers["allowed_outbound_ports"]))
