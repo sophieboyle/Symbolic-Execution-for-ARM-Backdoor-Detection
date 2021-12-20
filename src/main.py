@@ -341,7 +341,7 @@ class NetworkDriver:
             elif len(net_info["bind"]) > 0 and len(net_info["connect"]) > 0:
                 output_string += f"Type: {net_info['bind'][0]}\nSocket is both bound and connecting. Unconfirmed behaviour\n"
             else:
-                output_string += "Socket does not knowingly bind or connect. Check for usages of sendto or recvfrom."
+                output_string += "Socket does not knowingly bind or connect. Check for usages of sendto or recvfrom.\n"
             output_string += "\nDetailed network function information:\n"
             for func in net_info.keys():
                 if func in ["bind", "connect"]:
@@ -404,7 +404,6 @@ class Analyser:
         self.authentication_identifiers = authentication_identifiers
         self.output_string = ""
         self.project = angr.Project(filename, load_options={'auto_load_libs': False})
-        i = self.project.is_symbol_hooked("socket")
         self.entry_state = self.project.factory.entry_state()
         self.cfg = self.project.analyses.CFGEmulated(fail_fast=True)
 
