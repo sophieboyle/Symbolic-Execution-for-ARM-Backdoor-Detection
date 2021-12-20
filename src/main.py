@@ -5,19 +5,21 @@ import socket
 import struct
 
 socket_type_reference = {1: "TCP (SOCK_STREAM)",
-                    2: "UDP (SOCK_DGRAM)",
-                    3: "SOCK_RAW",
-                    4: "SOCK_RDM",
-                    5: "SOCK_SEQPACKET",
-                    6: "SOCK_DCCP",
-                    10: "SOCK_PACKET"}
+                         2: "UDP (SOCK_DGRAM)",
+                         3: "SOCK_RAW",
+                         4: "SOCK_RDM",
+                         5: "SOCK_SEQPACKET",
+                         6: "SOCK_DCCP",
+                         10: "SOCK_PACKET"}
 
-class FileIODetector():
+
+class FileIODetector:
     """
     This object takes a simulator, a function address, and a filename
     It will check if there's a state that reaches a function which operates
     on a specific file given by filename.
     """
+
     def __init__(self, sim, func_addr, filename):
         self.sim = sim
         self.func_addr = func_addr
@@ -29,19 +31,19 @@ class FileIODetector():
         at the object's function address, and operates on the file defined by the object's
         filename
         """
-        if (state.ip.args[0] == self.func_addr):
-            if (state.mem[state.solver.eval(state.regs.r0)].string.concrete).decode("utf-8")\
-                == self.filename:
+        if state.ip.args[0] == self.func_addr:
+            if state.mem[state.solver.eval(state.regs.r0)].string.concrete.decode("utf-8") \
+                    == self.filename:
                 return True
         return False
 
     def step_until_func_addr_in_rip(self, sim, addr):
         try:
-            while (sim.active[0].solver.eval(sim.active[0].regs.r15) != addr):
+            while sim.active[0].solver.eval(sim.active[0].regs.r15) != addr:
                 sim.step()
                 print(f"R15: {sim.active[0].regs.r15}, \
                         evaluated: {sim.active[0].solver.eval(sim.active[0].regs.r15)}")
-            if (sim.active[0].solver.eval(sim.active[0].regs.r15) == addr):
+            if sim.active[0].solver.eval(sim.active[0].regs.r15) == addr:
                 print("Successfully stepped until r15 = function addr")
             else:
                 print("Failed to step to function")
@@ -74,6 +76,7 @@ class NetworkDetection:
     If the mode is sending, the allowed_ports is a list of tuples (IP, port)
     If mode is listening, the allowed_ports is a list of ports
     """
+
     def __init__(self, project, entry_state, func_name, func_addr, allowed_ports, socket_table):
         self.sim = project.factory.simgr(entry_state)
         self.func_name = func_name
@@ -99,7 +102,8 @@ class NetworkDetection:
         limiter = angr.exploration_techniques.lengthlimiter.LengthLimiter(max_length=1000, drop=True)
         self.sim.use_technique(limiter)
         angr.types.register_types(angr.types.parse_type('struct in_addr{ uint32_t s_addr; }'))
-        angr.types.register_types(angr.types.parse_type('struct sockaddr_in{ unsigned short sin_family; uint16_t sin_port; struct in_addr sin_addr; }'))
+        angr.types.register_types(angr.types.parse_type(
+            'struct sockaddr_in{ unsigned short sin_family; uint16_t sin_port; struct in_addr sin_addr; }'))
 
     def net_func_state(self, state):
         if state.ip.args[0] == self.func_addr:
@@ -171,9 +175,9 @@ class SocketDetection:
         self.project = project
         self.sim = project.factory.simgr(entry_state)
         self.sock_addr = sock_addr
-        
+
     def socket_state(self, state):
-        if (state.ip.args[0] == self.sock_addr):
+        if state.ip.args[0] == self.sock_addr:
             self.sim.step()
             state = self.sim.active[0]
             self.socket_type = state.solver.eval(state.regs.r1)
@@ -187,7 +191,7 @@ class SocketDetection:
 
     def find_socket(self):
         self.sim.explore(find=self.socket_state)
-        return (self.socket_fd, self.socket_type)
+        return self.socket_fd, self.socket_type
 
 
 class AcceptDetection:
@@ -200,7 +204,7 @@ class AcceptDetection:
         self.sock_addr = sock_addr
 
     def socket_state(self, state):
-        if (state.ip.args[0] == self.sock_addr):
+        if state.ip.args[0] == self.sock_addr:
             self.sim.step()
             state = self.sim.active[0]
             # Can automatically assign the socket type as SOCK_STREAM
@@ -215,7 +219,7 @@ class AcceptDetection:
 
     def find_socket(self):
         self.sim.explore(find=self.socket_state)
-        return (self.socket_fd, self.socket_type)
+        return self.socket_fd, self.socket_type
 
 
 class NetworkDriver:
@@ -229,6 +233,7 @@ class NetworkDriver:
             'recvfrom': [SOCKET_TYPE]
         }
     """
+
     def __init__(self, project, entry_state, addresses, allowed_ports):
         self.project = project
         self.project.hook_symbol('inet_addr', InetAddr())
@@ -322,33 +327,31 @@ class NetworkDriver:
         return
 
     def output_network_information(self):
-        print(self.network_table)
+        output_string = ""
         for addr in self.network_table.keys():
-            print('-' * 30 + '\n')
+            output_string += '-' * 30 + '\n'
             net_info = self.network_table[addr]
-            print(f"IP: {addr[0]}\n"
-                  f"Port: {addr[1]}")
+            output_string += f"IP: {addr[0]}\nPort: {addr[1]}\n"
             if addr[0] is None and addr[1] is None:
-                print(f"No IP and Port information was found. The IP and Port is likely resolved dynamically.")
+                output_string += f"No IP and Port information was found. The IP and Port is likely resolved dynamically.\n"
             if len(net_info["bind"]) > 0 and len(net_info["connect"]) == 0:
-                print(f"Type: {net_info['bind'][0]}")
-                print("Listening for inbound traffic.")
+                output_string += f"Type: {net_info['bind'][0]}\nListening for inbound traffic.\n"
             elif len(net_info["connect"]) > 0 and len(net_info["bind"]) == 0:
-                print(f"Type: {net_info['connect'][0]}")
-                print("Connecting to send outbound traffic.")
+                output_string += f"Type: {net_info['connect'][0]}\nConnecting to send outbound traffic.\n"
             elif len(net_info["bind"]) > 0 and len(net_info["connect"]) > 0:
-                print(f"Type: {net_info['bind'][0]}")
-                print(f"Socket is both bound and connecting. Unconfirmed behaviour")
+                output_string += f"Type: {net_info['bind'][0]}\nSocket is both bound and connecting. Unconfirmed behaviour\n"
             else:
-                print("Socket does not knowingly bind or connect. Check for usages of sendto or recvfrom.")
-            print(f"\nDetailed network function information:")
+                output_string += "Socket does not knowingly bind or connect. Check for usages of sendto or recvfrom."
+            output_string += "\nDetailed network function information:\n"
             for func in net_info.keys():
                 if func in ["bind", "connect"]:
-                    print(f"Instances of {func}: {len(net_info[func])}, TYPES: {net_info[func]}")
+                    output_string += f"Instances of {func}: {len(net_info[func])}, TYPES: {net_info[func]}\n"
                 if func in ["send", "sendto", "recvfrom", "recv"]:
-                    print(f"Instances of {func}: {len(net_info[func])}, "
-                          f"TYPES: {[i[0] for i in net_info[func]]}, "
-                          f"MESSAGE SIZES: {[i[1] for i in net_info[func]]}")
+                    output_string += (f"Instances of {func}: {len(net_info[func])}, "
+                                      f"TYPES: {[i[0] for i in net_info[func]]}, "
+                                      f"MESSAGE SIZES: {[i[1] for i in net_info[func]]}\n")
+        print(output_string)
+        return output_string
 
     def find_sockets(self):
         # Check for sockets
@@ -388,7 +391,7 @@ class NetworkDriver:
 
 
 class Analyser:
-    def __init__(self, filename, authentication_identifiers):
+    def __init__(self, filename, authentication_identifiers, output_file):
         """
         string filename : The name of the binary to be analysed
         dict authentication_identifiers : dictionary with each key stating the type of\
@@ -397,7 +400,9 @@ class Analyser:
                                         of possible identifiers
         """
         self.filename = filename
+        self.output_file = output_file
         self.authentication_identifiers = authentication_identifiers
+        self.output_string = ""
         self.project = angr.Project(filename, load_options={'auto_load_libs': False})
         i = self.project.is_symbol_hooked("socket")
         self.entry_state = self.project.factory.entry_state()
@@ -412,19 +417,24 @@ class Analyser:
         something like IDA's Fast Library Identification and Recognition Technology
         """
         nodes = [n for n in self.cfg.nodes() if n.name == func_name]
-        call_addresses = [n.predecessors[0].predecessors[0].addr for n in nodes]  # The addresses in main which call the given function
+        call_addresses = [n.predecessors[0].predecessors[0].addr for n in
+                          nodes]  # The addresses in main which call the given function
         return call_addresses
 
     def find_paths_to_auth_strings(self, sim, auth_strings):
         for auth_str in auth_strings:
             sim.explore(find=lambda s: bytes(auth_str, 'utf-8') in s.posix.dumps(1),
-                    avoid=lambda s: b'Access denied' in s.posix.dumps(1))
+                        avoid=lambda s: b'Access denied' in s.posix.dumps(1))
             if sim.found:
                 access_state = sim.found[0]
                 print(f"Stdin resulting in printing of authentication string {auth_str}:\
                         {self.parse_solution_dump(access_state.posix.dumps(0))}")
             else:
                 print("No solution")
+
+    def write_results_to_file(self):
+        with open(self.output_file, "w") as f:
+            f.write(self.output_string)
 
     def run_symbolic_execution(self):
         sim = self.project.factory.simgr(self.entry_state)
@@ -435,7 +445,7 @@ class Analyser:
 
                     for f_string in self.authentication_identifiers["file_operation"][f_op]:
                         func_addrs = self.find_func_addr(f_op)
-                        
+
                         for func_addr in func_addrs:
                             # Insansiate File IO object
                             file_io_detector = FileIODetector(sim, func_addrs[0], f_string)
@@ -457,11 +467,13 @@ class Analyser:
                          "recvfrom": self.find_func_addr("recvfrom"),
                          "recv": self.find_func_addr("recv")}
         net_driver = NetworkDriver(self.project, self.entry_state, net_addresses,
-                                  (self.authentication_identifiers["allowed_listening_ports"],
-                                   self.authentication_identifiers["allowed_outbound_ports"]))
+                                   (self.authentication_identifiers["allowed_listening_ports"],
+                                    self.authentication_identifiers["allowed_outbound_ports"]))
         net_driver.run_network_detection()
         net_driver.prune_non_malicious_comms()
-        net_driver.output_network_information()
+        self.output_string += net_driver.output_network_information()
+        if self.output_file:
+            self.write_results_to_file()
 
     def parse_solution_dump(self, bytestring):
         """
@@ -485,7 +497,7 @@ class Analyser:
         results = []
         tmp = ''
         print(bytestring)
-        iterbytes = [bytestring[i:i+1] for i in range(len(bytestring))]
+        iterbytes = [bytestring[i:i + 1] for i in range(len(bytestring))]
         for b in iterbytes:
             if b == b'\x00':
                 results.append(tmp)
@@ -509,19 +521,21 @@ def arg_parsing():
     parser.add_argument('--allowed-inbound-ports', nargs="+")
     parser.add_argument('--allowed-outbound-ips', nargs="+")
     parser.add_argument('--allowed-outbound-ports', nargs="+")
+    parser.add_argument('--output-file', nargs="?", default=None)
     args = parser.parse_args()
-    get_listen_ports = lambda ports : [int(p) for p in ports] if ports!=None else []
-    get_outbound_ports = lambda ips, ports : zip(ips, ports) if ips != None and ports !=None else []
+    get_listen_ports = lambda ports: [int(p) for p in ports] if ports != None else []
+    get_outbound_ports = lambda ips, ports: zip(ips, ports) if ips != None and ports != None else []
 
     return (args.filename,
             {"string": args.strings,
-                "file_operation": {"fread": args.fread,
-                                    "fwrite": args.fwrite,
-                                    "fopen": args.fopen},
-                "allowed_listening_ports": get_listen_ports(args.allowed_inbound_ports),
-                "allowed_outbound_ports": get_outbound_ports(args.allowed_outbound_ips,
-                                                        args.allowed_outbound_ports),
-            })
+             "file_operation": {"fread": args.fread,
+                                "fwrite": args.fwrite,
+                                "fopen": args.fopen},
+             "allowed_listening_ports": get_listen_ports(args.allowed_inbound_ports),
+             "allowed_outbound_ports": get_outbound_ports(args.allowed_outbound_ips,
+                                                          args.allowed_outbound_ports),
+             },
+            args.output_file)
 
 
 def read_bytes(filename):
@@ -531,10 +545,10 @@ def read_bytes(filename):
 
 
 def main():
-    filename, auth_ids = arg_parsing()
+    filename, auth_ids, output_file = arg_parsing()
     print(auth_ids)
 
-    analyser = Analyser(filename[0], auth_ids)
+    analyser = Analyser(filename[0], auth_ids, output_file)
     analyser.run_symbolic_execution()
 
 
