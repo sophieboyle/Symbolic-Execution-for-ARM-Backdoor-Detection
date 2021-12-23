@@ -413,6 +413,7 @@ class ShellCommandDetection:
 
     def output_shell_cmds_information(self):
         print(self.out_string)
+        return self.out_string
 
     def find(self):
         self.find_strings()
@@ -422,7 +423,6 @@ class ShellCommandDetection:
             self.out_string += f"Shell commands in binary: {len(result)}\nShell commands: {result}"
         else:
             self.out_string += f"No shell commands found in binary"
-        return self.out_string
 
 
 class Analyser:
@@ -509,8 +509,8 @@ class Analyser:
 
         # Detect shell commands
         shellcmd_detect = ShellCommandDetection(self.filename)
-        self.output_string += shellcmd_detect.find()
-        shellcmd_detect.output_shell_cmds_information()
+        shellcmd_detect.find()
+        self.output_string += shellcmd_detect.output_shell_cmds_information()
 
         if self.output_file:
             self.write_results_to_file()
