@@ -3,6 +3,7 @@ import angr
 import argparse
 import socket
 import struct
+import re
 
 socket_type_reference = {1: "TCP (SOCK_STREAM)",
                          2: "UDP (SOCK_DGRAM)",
@@ -361,7 +362,6 @@ class NetworkDriver:
             for addr in sock_addrs:
                 sock_detector = SocketDetection(self.project, self.entry_state, addr)
                 socket_info = sock_detector.find_socket()
-                print(f"socket_info: {socket_info}")
                 socket_table[socket_info[0]] = {"type": socket_type_reference[socket_info[1]],
                                                 "ip": None,
                                                 "port": None,
@@ -388,6 +388,41 @@ class NetworkDriver:
                                                                    "recvfrom": 0,
                                                                    "recv": 0}}
         return socket_table
+
+
+class ShellCommandDetection:
+    def __init__(self, binary):
+        self.binary = binary
+        self.strings = None
+        self.out_string = ""
+
+    def find_strings(self):
+        with open(self.binary, errors="ignore") as f:
+            content = f.read()
+        self.strings = re.findall("[ -~]{4,}", content)
+        return self.strings
+
+    def check_for_shell_cmds(self):
+        shell_cmds = ["/bin/sh", "/bin/ksh", "/bin/csh"]
+        l = [s in self.strings for s in shell_cmds]
+        result = []
+        for i, e in enumerate(l):
+            if e:
+                result.append(shell_cmds[i])
+        return result
+
+    def output_shell_cmds_information(self):
+        print(self.out_string)
+
+    def find(self):
+        self.find_strings()
+        result = self.check_for_shell_cmds()
+        self.out_string += '-'*30+'\n'
+        if result:
+            self.out_string += f"Shell commands in binary: {len(result)}\nShell commands: {result}"
+        else:
+            self.out_string += f"No shell commands found in binary"
+        return self.out_string
 
 
 class Analyser:
@@ -471,6 +506,12 @@ class Analyser:
         net_driver.run_network_detection()
         net_driver.prune_non_malicious_comms()
         self.output_string += net_driver.output_network_information()
+
+        # Detect shell commands
+        shellcmd_detect = ShellCommandDetection(self.filename)
+        self.output_string += shellcmd_detect.find()
+        shellcmd_detect.output_shell_cmds_information()
+
         if self.output_file:
             self.write_results_to_file()
 
@@ -545,8 +586,6 @@ def read_bytes(filename):
 
 def main():
     filename, auth_ids, output_file = arg_parsing()
-    print(auth_ids)
-
     analyser = Analyser(filename[0], auth_ids, output_file)
     analyser.run_symbolic_execution()
 
