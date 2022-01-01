@@ -135,7 +135,7 @@ class NetworkDetection:
                     self.port = self.socket_table[self.socket]["port"]
                     return True
                 else:
-                    sockaddr_param = state.mem[state.solver.eval(state.regs.r4)].struct.sockaddr_in.concrete
+                    sockaddr_param = state.mem[state.mem[state.solver.eval(state.regs.sp)].int.concrete].struct.sockaddr_in.concrete
             elif self.func_name in ["recvfrom", "recv"]:
                 # Also get the size of the transmission
                 self.size = state.solver.eval(state.regs.r2)
@@ -162,7 +162,7 @@ class NetworkDetection:
         return False
 
     def find(self):
-        self.sim.explore(find=self.net_func_state, num_find=3)
+        self.sim.explore(find=self.net_func_state)
         return {"ip": self.ip,
                 "port": self.port,
                 "socket": self.socket,
