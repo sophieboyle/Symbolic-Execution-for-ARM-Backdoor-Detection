@@ -1,6 +1,7 @@
 import angr
 import socket
 import struct
+import archinfo
 
 socket_type_reference = {1: "TCP (SOCK_STREAM)",
                          2: "UDP (SOCK_DGRAM)",
@@ -11,11 +12,23 @@ socket_type_reference = {1: "TCP (SOCK_STREAM)",
                          10: "SOCK_PACKET"}
 
 
+# ------------- BEGIN SIMPROCEDURES -------------
+
 class InetAddr(angr.SimProcedure):
     def run(self, addr):
         ip_string = self.state.mem[self.state.solver.eval(addr.to_claripy())].string.concrete.decode('utf-8')
         ip_int = struct.unpack("<I", socket.inet_aton(ip_string))[0]
         return ip_int
+
+
+class InetAton(angr.SimProcedure):
+    def run(self, addr, in_addr_struct_ptr):
+        ip_string = self.state.mem[self.state.solver.eval(addr.to_claripy())].string.concrete.decode('utf-8')
+        ip_int = struct.unpack("<I", socket.inet_aton(ip_string))[0]
+        self.state.memory.store(in_addr_struct_ptr, ip_int, endness=archinfo.Endness.LE)
+        return 1
+
+# ------------- END SIMPROCEDURES -------------
 
 
 class NetworkDetection:
@@ -193,6 +206,7 @@ class NetworkDriver:
     def __init__(self, project, entry_state, addresses, allowed_ports):
         self.project = project
         self.project.hook_symbol('inet_addr', InetAddr())
+        self.project.hook_symbol('inet_aton', InetAton())
         self.entry_state = entry_state
         self.addresses = addresses
         self.allowed_inbound, self.allowed_outbound = allowed_ports
