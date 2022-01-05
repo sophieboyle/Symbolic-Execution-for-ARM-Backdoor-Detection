@@ -28,6 +28,24 @@ class InetAton(angr.SimProcedure):
         self.state.memory.store(in_addr_struct_ptr, ip_int, endness=archinfo.Endness.LE)
         return 1
 
+
+class InetNtoa(angr.SimProcedure):
+    def run(self, in_addr_struct):
+        self.state.register_plugin("heap", angr.state_plugins.heap.heap_ptmalloc.SimHeapPTMalloc())
+        # Since in_addr is only 4 bytes in size and only holds an int, arg can be resolved as an int
+        try:
+            i = self.state.solver.eval(in_addr_struct.to_claripy())
+            ip_string = socket.inet_ntoa(struct.pack('<L', i))
+
+        except Exception as e:
+            exception = e
+            ip_string = "0.0.0.0"
+
+        # Must return a string pointer, therefore memory must be allocated
+        ip_string_ptr = self.state.heap.malloc(len(ip_string))
+        self.state.memory.store(ip_string_ptr, self.state.solver.BVV(ip_string.encode('utf-8'), len(ip_string)*8))
+        return ip_string_ptr
+
 # ------------- END SIMPROCEDURES -------------
 
 
@@ -207,6 +225,7 @@ class NetworkDriver:
         self.project = project
         self.project.hook_symbol('inet_addr', InetAddr())
         self.project.hook_symbol('inet_aton', InetAton())
+        self.project.hook_symbol('inet_ntoa', InetNtoa())
         self.entry_state = entry_state
         self.addresses = addresses
         self.allowed_inbound, self.allowed_outbound = allowed_ports
