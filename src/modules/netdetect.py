@@ -340,7 +340,7 @@ class NetworkDriver:
                                       f"TYPES: {[i[0] for i in net_info[func]]}, "
                                       f"MESSAGE SIZES: {[i[1] for i in net_info[func]]}\n")
         print(output_string)
-        return output_string
+        return output_string, self.network_table
 
     def find_sockets(self):
         # Check for sockets

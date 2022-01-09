@@ -4,9 +4,9 @@ import argparse
 import socket
 import struct
 import re
-from modules.netdetect import *
-from modules.shelldetect import *
-from modules.filedetect import *
+from src.modules.netdetect import *
+from src.modules.shelldetect import *
+from src.modules.filedetect import *
 
 
 class Analyser:
@@ -21,10 +21,11 @@ class Analyser:
         self.filename = filename
         self.output_file = output_file
         self.authentication_identifiers = authentication_identifiers
-        self.output_string = ""
         self.project = angr.Project(filename, load_options={'auto_load_libs': False})
         self.entry_state = self.project.factory.entry_state()
         self.cfg = self.project.analyses.CFGEmulated(fail_fast=True)
+        self.output_string = ""
+        self.results = {}
 
     def find_func_addr(self, func_name):
         """
@@ -89,7 +90,9 @@ class Analyser:
                                     self.authentication_identifiers["allowed_outbound_ports"]))
         net_driver.run_network_detection()
         net_driver.prune_non_malicious_comms()
-        self.output_string += net_driver.output_network_information()
+        network_output_string, network_table = net_driver.output_network_information()
+        self.output_string += network_output_string
+        self.results["network_table"] = network_table
 
         # Detect shell commands
         shellcmd_detect = ShellCommandDetection(self.filename)
@@ -98,6 +101,8 @@ class Analyser:
 
         if self.output_file:
             self.write_results_to_file()
+
+        return self.results
 
     def parse_solution_dump(self, bytestring):
         """
