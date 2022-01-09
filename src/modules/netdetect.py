@@ -74,16 +74,7 @@ class NetworkDetection:
         self.port = None
         self.size = None
 
-        # TODO: Remove redundant arg_register attribute and its usage
-        if func_name in ["bind", "connect"]:
-            self.arg_register = 1
-        elif func_name in ["send", "sendto", "recvfrom"]:
-            # Note: if IP dereferenced from sendto call is 0.0.0.0 on port 0, sockaddr for sendto is unknown
-            # Most likely dependent on recieving some external information of where to sendto
-            self.arg_register = 4
-        elif func_name in ["recv"]:
-            self.arg_register = None
-        else:
+        if func_name not in ["bind", "connect", "send", "sendto", "recv", "recvfrom"]:
             raise ValueError("Unimplemented function name passed")
 
         limiter = angr.exploration_techniques.lengthlimiter.LengthLimiter(max_length=1000, drop=True)
