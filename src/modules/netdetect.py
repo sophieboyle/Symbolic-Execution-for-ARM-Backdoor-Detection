@@ -74,13 +74,14 @@ class NetworkDetection:
         self.port = None
         self.size = None
 
+        # TODO: Remove redundant arg_register attribute and its usage
         if func_name in ["bind", "connect"]:
             self.arg_register = 1
-        elif func_name in ["send", "sendto"]:
+        elif func_name in ["send", "sendto", "recvfrom"]:
             # Note: if IP dereferenced from sendto call is 0.0.0.0 on port 0, sockaddr for sendto is unknown
             # Most likely dependent on recieving some external information of where to sendto
             self.arg_register = 4
-        elif func_name in ["recvfrom", "recv"]:
+        elif func_name in ["recv"]:
             self.arg_register = None
         else:
             raise ValueError("Unimplemented function name passed")
@@ -122,13 +123,25 @@ class NetworkDetection:
                 else:
                     sockaddr_param = state.mem[
                         state.mem[state.solver.eval(state.regs.sp)].int.concrete].struct.sockaddr_in.concrete
-            elif self.func_name in ["recvfrom", "recv"]:
+            elif self.func_name in ["recv"]:
                 # Also get the size of the transmission
                 self.size = state.solver.eval(state.regs.r2)
                 # Get ip and port information from socket
                 self.ip = self.socket_table[self.socket]["ip"]
                 self.port = self.socket_table[self.socket]["port"]
                 return True
+            elif self.func_name in ["recvfrom"]:
+                # Also get the size of the transmission
+                self.size = state.solver.eval(state.regs.r2)
+                # Similar to sendto(), can be used in connection or connectionless mode
+                if self.socket_table[self.socket]["type"] in [socket_type_reference[1], socket_type_reference[5]]:
+                    # Connection mode
+                    self.ip = self.socket_table[self.socket]["ip"]
+                    self.port = self.socket_table[self.socket]["port"]
+                    return True
+                else:
+                    sockaddr_param = state.mem[
+                        state.mem[state.solver.eval(state.regs.sp)].int.concrete].struct.sockaddr_in.concrete
             else:
                 raise ValueError("Unimplemented argument register")
 
