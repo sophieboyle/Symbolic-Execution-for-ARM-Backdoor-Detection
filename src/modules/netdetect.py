@@ -153,10 +153,15 @@ class NetworkDetection:
             server_ip = socket.inet_ntoa(struct.pack('<I', sockaddr_param.sin_addr.s_addr))
             server_port = socket.ntohs(sockaddr_param.sin_port)
 
-            if (server_ip, server_port) not in self.allowed_ports:
-                self.ip = server_ip
-                self.port = server_port
-                return True
+            self.ip = server_ip
+            self.port = server_port
+
+            if self.func_name != "bind":
+                if self.ip == '0.0.0.0':
+                    self.ip = None
+                if self.port == 0:
+                    self.port = None
+
             return True
         return False
 
