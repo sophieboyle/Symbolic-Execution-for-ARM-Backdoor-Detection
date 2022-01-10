@@ -85,10 +85,8 @@ class Analyser:
                          "sendto": self.find_func_addr("sendto"),
                          "recvfrom": self.find_func_addr("recvfrom"),
                          "recv": self.find_func_addr("recv")}
-        net_driver = NetworkDriver(self.project, self.entry_state, net_addresses,
-                                   (self.authentication_identifiers["allowed_listening_ports"],
-                                    self.authentication_identifiers["allowed_outbound_ports"]))
-        self.results["network_table"] =  net_driver.run_network_detection()
+        net_driver = NetworkDriver(self.project, self.entry_state, net_addresses)
+        self.results["network_table"] = net_driver.run_network_detection()
         net_driver.output_network_information()
 
         # Detect shell commands

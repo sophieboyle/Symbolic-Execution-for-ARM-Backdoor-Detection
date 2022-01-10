@@ -53,21 +53,16 @@ class NetworkDetection:
     """
     Object will take a function address representative of
     the bind function. It will dump the sockaddr_in struct
-    and check if the sin_port is in the allowed_ports list
 
     Mode option can choose between finding IP and ports to which outbound
     traffic is sent (sending), or finding ports on which the
     binary is listening (listening)
-
-    If the mode is sending, the allowed_ports is a list of tuples (IP, port)
-    If mode is listening, the allowed_ports is a list of ports
     """
 
-    def __init__(self, project, entry_state, func_name, func_addr, allowed_ports, socket_table):
+    def __init__(self, project, entry_state, func_name, func_addr, socket_table):
         self.sim = project.factory.simgr(entry_state)
         self.func_name = func_name
         self.func_addr = func_addr
-        self.allowed_ports = allowed_ports
         self.socket_table = socket_table
         self.socket = None
         self.ip = None
@@ -237,14 +232,13 @@ class NetworkDriver:
         }
     """
 
-    def __init__(self, project, entry_state, addresses, allowed_ports):
+    def __init__(self, project, entry_state, addresses):
         self.project = project
         self.project.hook_symbol('inet_addr', InetAddr())
         self.project.hook_symbol('inet_aton', InetAton())
         self.project.hook_symbol('inet_ntoa', InetNtoa())
         self.entry_state = entry_state
         self.addresses = addresses
-        self.allowed_inbound, self.allowed_outbound = allowed_ports
         self.socket_table = self.find_sockets()
         self.network_table = {}
         self.malicious_ips = self.get_malicious_net('../resources/bad-ips.csv')
@@ -282,21 +276,21 @@ class NetworkDriver:
                                                         info["size"]))
 
     def run_network_detection(self):
-        self.investigate_network_functions("bind", self.addresses["bind"], self.allowed_inbound)
-        self.investigate_network_functions("connect", self.addresses["connect"], self.allowed_outbound)
-        self.investigate_network_functions("send", self.addresses["send"], self.allowed_outbound)
-        self.investigate_network_functions("recv", self.addresses["recv"], self.allowed_inbound)
-        self.investigate_network_functions("sendto", self.addresses["sendto"], self.allowed_outbound)
-        self.investigate_network_functions("recvfrom", self.addresses["recvfrom"], self.allowed_inbound)
+        self.investigate_network_functions("bind", self.addresses["bind"])
+        self.investigate_network_functions("connect", self.addresses["connect"])
+        self.investigate_network_functions("send", self.addresses["send"])
+        self.investigate_network_functions("recv", self.addresses["recv"])
+        self.investigate_network_functions("sendto", self.addresses["sendto"])
+        self.investigate_network_functions("recvfrom", self.addresses["recvfrom"])
         self.prune_non_malicious_comms()
         self.construct_output_string()
         return self.network_table
 
-    def investigate_network_functions(self, net_func, func_addrs, allowed_list):
+    def investigate_network_functions(self, net_func, func_addrs):
         if func_addrs:
             for addr in func_addrs:
                 netdetect = NetworkDetection(self.project, self.entry_state, net_func, addr,
-                                             allowed_list, self.socket_table)
+                                             self.socket_table)
                 result = netdetect.find()
                 self.update_socket_info(net_func, result)
                 self.update_network_table(net_func, result)
