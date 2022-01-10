@@ -274,34 +274,12 @@ class NetworkDriver:
                                                         info["size"]))
 
     def run_network_detection(self):
-        # Check for instances of bind
-        bind_addrs = self.addresses["bind"]
-        if bind_addrs:
-            self.investigate_network_functions("bind", bind_addrs, self.allowed_inbound)
-
-        # Find connected sockets
-        connect_addrs = self.addresses["connect"]
-        if connect_addrs:
-            self.investigate_network_functions("connect", connect_addrs, self.allowed_outbound)
-
-        # Check if TCP: outbound TCP connections will have instances of send
-        send_addrs = self.addresses["send"]
-        if send_addrs:
-            self.investigate_network_functions("send", send_addrs, self.allowed_outbound)
-
-        recv_addrs = self.addresses["recv"]
-        if recv_addrs:
-            self.investigate_network_functions("recv", recv_addrs, self.allowed_inbound)
-
-        # Check if UDP: outbound UDP packets will be sent via sendto()
-        sendto_addrs = self.addresses["sendto"]
-        if sendto_addrs:
-            self.investigate_network_functions("sendto", sendto_addrs, self.allowed_outbound)
-
-        # Check for inbound UDP indications
-        recvfrom_addrs = self.addresses["recvfrom"]
-        if recvfrom_addrs:
-            self.investigate_network_functions("recvfrom", recvfrom_addrs, self.allowed_inbound)
+        self.investigate_network_functions("bind", self.addresses["bind"], self.allowed_inbound)
+        self.investigate_network_functions("connect", self.addresses["connect"], self.allowed_outbound)
+        self.investigate_network_functions("send", self.addresses["send"], self.allowed_outbound)
+        self.investigate_network_functions("recv", self.addresses["recv"], self.allowed_inbound)
+        self.investigate_network_functions("sendto", self.addresses["sendto"], self.allowed_outbound)
+        self.investigate_network_functions("recvfrom", self.addresses["recvfrom"], self.allowed_inbound)
 
     def investigate_network_functions(self, net_func, func_addrs, allowed_list):
         if func_addrs:
