@@ -83,75 +83,82 @@ class NetworkDetection:
         angr.types.register_types(angr.types.parse_type(
             'struct sockaddr_in{ unsigned short sin_family; uint16_t sin_port; struct in_addr sin_addr; }'))
 
+    def correct_addresses_if_none(self):
+        if self.ip == '0.0.0.0':
+            self.ip = None
+        if self.port == 0:
+            self.port = None
+
+    def bind_state(self, state):
+        sockaddr_param = state.mem[state.solver.eval(state.regs.r1)].struct.sockaddr_in.concrete
+        self.ip = socket.inet_ntoa(struct.pack('<I', sockaddr_param.sin_addr.s_addr))
+        self.port = socket.ntohs(sockaddr_param.sin_port)
+
+    def connect_state(self, state):
+        sockaddr_param = state.mem[state.solver.eval(state.regs.r1)].struct.sockaddr_in.concrete
+        self.ip = socket.inet_ntoa(struct.pack('<I', sockaddr_param.sin_addr.s_addr))
+        self.port = socket.ntohs(sockaddr_param.sin_port)
+        self.correct_addresses_if_none()
+
+    def send_state(self, state):
+        self.size = state.solver.eval(state.regs.r2)
+        # IP and port is associated with the socket
+        self.ip = self.socket_table[self.socket]["ip"]
+        self.port = self.socket_table[self.socket]["port"]
+
+    def sendto_state(self, state):
+        self.size = state.solver.eval(state.regs.r2)
+        if self.socket_table[self.socket]["type"] in [socket_type_reference[1], socket_type_reference[5]]:
+            # Connection mode: get IP and port from socket's connect call
+            self.ip = self.socket_table[self.socket]["ip"]
+            self.port = self.socket_table[self.socket]["port"]
+        else:
+            # Connectionless mode: get IP and port from stack
+            sockaddr_param = state.mem[
+                state.mem[state.solver.eval(state.regs.sp)].int.concrete].struct.sockaddr_in.concrete
+            self.ip = socket.inet_ntoa(struct.pack('<I', sockaddr_param.sin_addr.s_addr))
+            self.port = socket.ntohs(sockaddr_param.sin_port)
+            self.correct_addresses_if_none()
+
+    def recv_state(self, state):
+        self.size = state.solver.eval(state.regs.r2)
+        # Get ip and port information from socket
+        self.ip = self.socket_table[self.socket]["ip"]
+        self.port = self.socket_table[self.socket]["port"]
+
+    def recvfrom_state(self, state):
+        self.size = state.solver.eval(state.regs.r2)
+        # Similar to sendto(), can be used in connection or connectionless mode
+        if self.socket_table[self.socket]["type"] in [socket_type_reference[1], socket_type_reference[5]]:
+            self.ip = self.socket_table[self.socket]["ip"]
+            self.port = self.socket_table[self.socket]["port"]
+        else:
+            sockaddr_param = state.mem[
+                state.mem[state.solver.eval(state.regs.sp)].int.concrete].struct.sockaddr_in.concrete
+            self.ip = socket.inet_ntoa(struct.pack('<I', sockaddr_param.sin_addr.s_addr))
+            self.port = socket.ntohs(sockaddr_param.sin_port)
+            self.correct_addresses_if_none()
+
     def net_func_state(self, state):
         if state.ip.args[0] == self.func_addr:
             self.sim.step()
             state = self.sim.active[0]
-
             self.socket = state.solver.eval(state.regs.r0)
 
-            if self.func_name in ["bind", "connect"]:
-                # Get IP and port from r1
-                sockaddr_param = state.mem[state.solver.eval(state.regs.r1)].struct.sockaddr_in.concrete
-            elif self.func_name in ["send"]:
-                # Get the size of the transmission
-                self.size = state.solver.eval(state.regs.r2)
-                # IP and port is associated with the socket
-                self.ip = self.socket_table[self.socket]["ip"]
-                self.port = self.socket_table[self.socket]["port"]
-                return True
-            elif self.func_name in ["sendto"]:
-                # Get the size of the transmission
-                self.size = state.solver.eval(state.regs.r2)
-                # Determine if sendto() is in connection or connectionless mode
-                # If in connection mode, get IP and port from socket's connect call
-                # If in connectionless mode, get IP and port from r4
-                if self.socket_table[self.socket]["type"] in [socket_type_reference[1], socket_type_reference[5]]:
-                    # Connection mode
-                    self.ip = self.socket_table[self.socket]["ip"]
-                    self.port = self.socket_table[self.socket]["port"]
-                    return True
-                else:
-                    sockaddr_param = state.mem[
-                        state.mem[state.solver.eval(state.regs.sp)].int.concrete].struct.sockaddr_in.concrete
-            elif self.func_name in ["recv"]:
-                # Also get the size of the transmission
-                self.size = state.solver.eval(state.regs.r2)
-                # Get ip and port information from socket
-                self.ip = self.socket_table[self.socket]["ip"]
-                self.port = self.socket_table[self.socket]["port"]
-                return True
-            elif self.func_name in ["recvfrom"]:
-                # Also get the size of the transmission
-                self.size = state.solver.eval(state.regs.r2)
-                # Similar to sendto(), can be used in connection or connectionless mode
-                if self.socket_table[self.socket]["type"] in [socket_type_reference[1], socket_type_reference[5]]:
-                    # Connection mode
-                    self.ip = self.socket_table[self.socket]["ip"]
-                    self.port = self.socket_table[self.socket]["port"]
-                    return True
-                else:
-                    sockaddr_param = state.mem[
-                        state.mem[state.solver.eval(state.regs.sp)].int.concrete].struct.sockaddr_in.concrete
+            if self.func_name == 'bind':
+                self.bind_state(state)
+            elif self.func_name == 'connect':
+                self.connect_state(state)
+            elif self.func_name == 'send':
+                self.send_state(state)
+            elif self.func_name == 'sendto':
+                self.sendto_state(state)
+            elif self.func_name == 'recv':
+                self.recv_state(state)
+            elif self.func_name == 'recvfrom':
+                self.recvfrom_state(state)
             else:
-                raise ValueError("Unimplemented argument register")
-
-            # The ip address in sin_addr.s_addr needs to be packed in little endian format
-            # despite the fact that inet_ntoa converts from network byte order (big endian)
-            # to a formatted IPv4 string. The register must store s_addr in little endian format
-            # Otherwise, setting struct.pack to pack in big endian format results in the IP address
-            # being printed backwards
-            server_ip = socket.inet_ntoa(struct.pack('<I', sockaddr_param.sin_addr.s_addr))
-            server_port = socket.ntohs(sockaddr_param.sin_port)
-
-            self.ip = server_ip
-            self.port = server_port
-
-            if self.func_name != "bind":
-                if self.ip == '0.0.0.0':
-                    self.ip = None
-                if self.port == 0:
-                    self.port = None
+                raise ValueError("Unimplemented function name")
 
             return True
         return False
