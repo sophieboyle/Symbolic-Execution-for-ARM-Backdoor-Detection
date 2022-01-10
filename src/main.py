@@ -144,9 +144,6 @@ def arg_parsing():
     parser.add_argument('--fread', nargs="+")
     parser.add_argument('--fwrite', nargs="+")
     parser.add_argument('--fopen', nargs="+")
-    parser.add_argument('--allowed-inbound-ports', nargs="+")
-    parser.add_argument('--allowed-outbound-ips', nargs="+")
-    parser.add_argument('--allowed-outbound-ports', nargs="+")
     parser.add_argument('--output-file', nargs="?", default=None)
     args = parser.parse_args()
     get_listen_ports = lambda ports: [int(p) for p in ports] if ports != None else []
@@ -157,9 +154,6 @@ def arg_parsing():
              "file_operation": {"fread": args.fread,
                                 "fwrite": args.fwrite,
                                 "fopen": args.fopen},
-             "allowed_listening_ports": get_listen_ports(args.allowed_inbound_ports),
-             "allowed_outbound_ports": get_outbound_ports(args.allowed_outbound_ips,
-                                                          args.allowed_outbound_ports),
              },
             args.output_file)
 

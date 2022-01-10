@@ -10,8 +10,6 @@ class TestNetworkDetectionTcpClient(unittest.TestCase):
                                        "file_operation": {"fread": [],
                                                           "fwrite": [],
                                                           "fopen": []},
-                                       "allowed_listening_ports": [],
-                                       "allowed_outbound_ports": []
                                        },
                             None
                             )
