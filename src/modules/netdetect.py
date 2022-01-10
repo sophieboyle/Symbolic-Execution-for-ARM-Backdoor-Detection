@@ -249,6 +249,7 @@ class NetworkDriver:
         self.network_table = {}
         self.malicious_ips = self.get_malicious_net('../resources/bad-ips.csv')
         self.malicious_ports = self.get_malicious_net('../resources/bad-ports.csv')
+        self.output_string = ""
 
     def get_malicious_net(self, filename):
         with open(filename, 'r') as f:
@@ -287,6 +288,9 @@ class NetworkDriver:
         self.investigate_network_functions("recv", self.addresses["recv"], self.allowed_inbound)
         self.investigate_network_functions("sendto", self.addresses["sendto"], self.allowed_outbound)
         self.investigate_network_functions("recvfrom", self.addresses["recvfrom"], self.allowed_inbound)
+        self.prune_non_malicious_comms()
+        self.construct_output_string()
+        return self.network_table
 
     def investigate_network_functions(self, net_func, func_addrs, allowed_list):
         if func_addrs:
@@ -309,7 +313,7 @@ class NetworkDriver:
                 continue
         return
 
-    def output_network_information(self):
+    def construct_output_string(self):
         output_string = ""
         for addr in self.network_table.keys():
             output_string += '-' * 30 + '\n'
@@ -333,8 +337,16 @@ class NetworkDriver:
                     output_string += (f"Instances of {func}: {len(net_info[func])}, "
                                       f"TYPES: {[i[0] for i in net_info[func]]}, "
                                       f"MESSAGE SIZES: {[i[1] for i in net_info[func]]}\n")
-        print(output_string)
-        return output_string, self.network_table
+        self.output_string = output_string
+
+    def output_network_information(self):
+        print(self.output_string)
+
+    def get_output_string(self):
+        return self.output_string
+
+    def get_network_table(self):
+        return self.network_table
 
     def find_sockets(self):
         # Check for sockets

@@ -88,18 +88,17 @@ class Analyser:
         net_driver = NetworkDriver(self.project, self.entry_state, net_addresses,
                                    (self.authentication_identifiers["allowed_listening_ports"],
                                     self.authentication_identifiers["allowed_outbound_ports"]))
-        net_driver.run_network_detection()
-        net_driver.prune_non_malicious_comms()
-        network_output_string, network_table = net_driver.output_network_information()
-        self.output_string += network_output_string
-        self.results["network_table"] = network_table
+        self.results["network_table"] =  net_driver.run_network_detection()
+        net_driver.output_network_information()
 
         # Detect shell commands
         shellcmd_detect = ShellCommandDetection(self.filename)
-        shellcmd_detect.find()
-        self.output_string += shellcmd_detect.output_shell_cmds_information()
+        self.results["shell_strings"] = shellcmd_detect.find()
+        shellcmd_detect.output_shell_cmds_information()
 
         if self.output_file:
+            self.output_string += net_driver.get_output_string()
+            self.output_string += shellcmd_detect.get_output_string()
             self.write_results_to_file()
 
         return self.results

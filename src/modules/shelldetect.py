@@ -1,6 +1,5 @@
 import re
 
-
 class ShellCommandDetection:
     def __init__(self, binary):
         self.binary = binary
@@ -22,6 +21,9 @@ class ShellCommandDetection:
                 result.append(shell_cmds[i])
         return result
 
+    def get_output_string(self):
+        return self.out_string
+
     def output_shell_cmds_information(self):
         print(self.out_string)
         return self.out_string
@@ -34,3 +36,4 @@ class ShellCommandDetection:
             self.out_string += f"Shell commands in binary: {len(result)}\nShell commands: {result}"
         else:
             self.out_string += f"No shell commands found in binary"
+        return result
