@@ -234,9 +234,6 @@ class NetworkDriver:
 
     def __init__(self, project, entry_state, addresses):
         self.project = project
-        self.project.hook_symbol('inet_addr', InetAddr())
-        self.project.hook_symbol('inet_aton', InetAton())
-        self.project.hook_symbol('inet_ntoa', InetNtoa())
         self.entry_state = entry_state
         self.addresses = addresses
         self.socket_table = self.find_sockets()

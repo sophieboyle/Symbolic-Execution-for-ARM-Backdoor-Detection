@@ -22,6 +22,9 @@ class Analyser:
         self.output_file = output_file
         self.authentication_identifiers = authentication_identifiers
         self.project = angr.Project(filename, load_options={'auto_load_libs': False})
+        self.project.hook_symbol('inet_addr', InetAddr())
+        self.project.hook_symbol('inet_aton', InetAton())
+        self.project.hook_symbol('inet_ntoa', InetNtoa())
         self.entry_state = self.project.factory.entry_state()
         self.cfg = self.project.analyses.CFGEmulated(fail_fast=True)
         self.output_string = ""
@@ -57,20 +60,14 @@ class Analyser:
 
     def run_symbolic_execution(self):
         sim = self.project.factory.simgr(self.entry_state)
-        if self.authentication_identifiers["file_operation"]:
 
-            for f_op in self.authentication_identifiers["file_operation"]:
-                if self.authentication_identifiers["file_operation"][f_op]:
-
-                    for f_string in self.authentication_identifiers["file_operation"][f_op]:
-                        func_addrs = self.find_func_addr(f_op)
-
-                        for func_addr in func_addrs:
-                            # Insansiate File IO object
-                            file_io_detector = FileIODetector(sim, func_addrs[0], f_string)
-                            sol = file_io_detector.find()
-                            print(f"Stdin resulting in {f_op} with file {f_string}: \
-                                {self.parse_solution_dump(sol)}")
+        file_io_addresses = {"fopen": self.find_func_addr("fopen"),
+                             "fwrite": self.find_func_addr("fwrite"),
+                             "fread": self.find_func_addr("fread")
+                             }
+        file_access_driver = FileAccessDriver(self.project, self.entry_state, file_io_addresses)
+        self.results["file_access_table"] = file_access_driver.run_file_detection()
+        self.output_string += file_access_driver.get_output_string()
 
         if self.authentication_identifiers["string"]:
             for auth_str in self.authentication_identifiers["string"]:
@@ -87,17 +84,17 @@ class Analyser:
                          "recv": self.find_func_addr("recv")}
         net_driver = NetworkDriver(self.project, self.entry_state, net_addresses)
         self.results["network_table"] = net_driver.run_network_detection()
-        net_driver.output_network_information()
+        self.output_string += net_driver.get_output_string()
 
         # Detect shell commands
         shellcmd_detect = ShellCommandDetection(self.filename)
         self.results["shell_strings"] = shellcmd_detect.find()
-        shellcmd_detect.output_shell_cmds_information()
+        self.output_string += shellcmd_detect.get_output_string()
 
         if self.output_file:
-            self.output_string += net_driver.get_output_string()
-            self.output_string += shellcmd_detect.get_output_string()
             self.write_results_to_file()
+
+        print(self.output_string)
 
         return self.results
 
