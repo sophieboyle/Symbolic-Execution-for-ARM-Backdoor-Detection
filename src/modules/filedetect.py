@@ -18,6 +18,19 @@ class FileAccessDetector:
             self.result[func_name] = False
         limiter = angr.exploration_techniques.lengthlimiter.LengthLimiter(max_length=100, drop=True)
         self.sim.use_technique(limiter)
+        self.update_file_pointer = None
+
+    def fopen_state(self, state):
+        try:
+            # try to extract the string argument
+            filename_arg = state.mem[state.solver.eval(state.regs.r0)].string.concrete.decode("utf-8")
+        except:
+            return False
+        if filename_arg == self.filename:
+            self.result[self.currently_finding_func_name] = True
+            return True
+        else:
+            return False
 
     def file_io_func_state(self, state):
         """
@@ -28,15 +41,8 @@ class FileAccessDetector:
         if state.ip.args[0] in self.fileio_addresses[self.currently_finding_func_name]:
             self.sim.step()
             state = self.sim.active[0]
-            try:
-                # try to extract the string argument
-                filename_arg = state.mem[state.solver.eval(state.regs.r0)].string.concrete.decode("utf-8")
-            except:
-                return False
-
-            if filename_arg == self.filename:
-                self.result[self.currently_finding_func_name] = True
-                return True
+            if self.currently_finding_func_name == 'fopen':
+                return self.fopen_state(state)
         return False
 
     def find(self):
@@ -58,6 +64,7 @@ class FileAccessDriver:
         self.fileio_func_addresses = fileio_func_addresses
         self.sensitive_files = self.get_sensitive_files('../resources/sensitive-files.csv')
         self.file_table = {}
+        self.file_pointer_tracker = {}
         self.output_string = '-'*30+'\n'
 
     def get_sensitive_files(self, path):
@@ -89,3 +96,6 @@ class FileAccessDriver:
 
     def get_output_string(self):
         return self.output_string
+
+    def update_file_pointer_tracker(self, filename, mem_addr):
+        self.file_pointer_tracker[mem_addr] = filename
