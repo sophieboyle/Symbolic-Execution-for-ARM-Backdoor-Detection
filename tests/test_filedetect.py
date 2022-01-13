@@ -5,7 +5,7 @@ from parameterized import parameterized_class
 
 @parameterized_class([
     {"code_sample": "file-open", "operations": {"/etc/passwd": ["fopen"]}},
-    {"code_sample": "multiple-file-open", "operations": {"/etc/passwd": "fopen", "/etc/shadow": "fopen"}}
+    {"code_sample": "multiple-file-open", "operations": {"/etc/passwd": ["fopen"], "/etc/shadow": ["fopen"]}},
 ])
 class TestFileDetection(unittest.TestCase):
     @classmethod
