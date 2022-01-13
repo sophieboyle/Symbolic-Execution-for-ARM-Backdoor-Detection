@@ -1,12 +1,11 @@
 import angr
 
+
 class FileAccessDetector:
     """
     This object takes a simulator, a function address, and a filename
     It will check if there's a state that reaches a function which operates
     on a specific file given by filename.
-
-    TODO: This is broken because it fails at inet_ntoa -> find a way to hook the network functions here as well
     """
 
     def __init__(self, project, entry_state, fileio_addresses, filename):
@@ -27,6 +26,8 @@ class FileAccessDetector:
         filename
         """
         if state.ip.args[0] in self.fileio_addresses[self.currently_finding_func_name]:
+            self.sim.step()
+            state = self.sim.active[0]
             try:
                 # try to extract the string argument
                 filename_arg = state.mem[state.solver.eval(state.regs.r0)].string.concrete.decode("utf-8")
