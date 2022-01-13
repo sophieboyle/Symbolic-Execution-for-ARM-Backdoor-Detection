@@ -5,6 +5,8 @@ from parameterized import parameterized_class
 
 @parameterized_class([
     {"code_sample": "hidden-shell", "shell_strings_expected": ["/bin/sh"]},
+    {"code_sample": "two-shell", "shell_strings_expected": ["/bin/sh", "/bin/ksh"]},
+    {"code_sample": "shell", "shell_strings_expected": ["/bin/sh"]}
 ])
 class TestShellDetection(unittest.TestCase):
     @classmethod
