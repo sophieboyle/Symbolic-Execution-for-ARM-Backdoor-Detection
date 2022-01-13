@@ -6,11 +6,7 @@ class TestNetworkDetectionTcpClient(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         analyser = Analyser("code-samples/networking/tcp-client-sample",
-                                      {"string": [],
-                                       "file_operation": {"fread": [],
-                                                          "fwrite": [],
-                                                          "fopen": []},
-                                       },
+                            {"string": []},
                             None
                             )
         cls.results = analyser.run_symbolic_execution()
@@ -87,13 +83,7 @@ class TestNetworkDetectionUdpClient(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         analyser = Analyser("code-samples/networking/udp-client-sample",
-                                      {"string": [],
-                                       "file_operation": {"fread": [],
-                                                          "fwrite": [],
-                                                          "fopen": []},
-                                       "allowed_listening_ports": [],
-                                       "allowed_outbound_ports": []
-                                       },
+                            {"string": []},
                             None
                             )
         cls.results = analyser.run_symbolic_execution()
@@ -124,13 +114,7 @@ class TestNetworkDetectionUdpServer(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         analyser = Analyser("code-samples/networking/udp-server-sample",
-                                      {"string": [],
-                                       "file_operation": {"fread": [],
-                                                          "fwrite": [],
-                                                          "fopen": []},
-                                       "allowed_listening_ports": [],
-                                       "allowed_outbound_ports": []
-                                       },
+                            {"string": []},
                             None
                             )
         cls.results = analyser.run_symbolic_execution()

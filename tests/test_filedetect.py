@@ -6,16 +6,13 @@ from parameterized import parameterized_class
 @parameterized_class([
     {"code_sample": "file-open", "operations": {"/etc/passwd": ["fopen"]}},
     {"code_sample": "multiple-file-open", "operations": {"/etc/passwd": ["fopen"], "/etc/shadow": ["fopen"]}},
+#    {"code_sample": "file-read", "operations": {"/etc/passwd": ["fopen", "fread"]}},
 ])
 class TestFileDetection(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         analyser = Analyser(f"code-samples/file-access/{cls.code_sample}",
-                                      {"string": [],
-                                       "file_operation": {"fread": [],
-                                                          "fwrite": [],
-                                                          "fopen": []},
-                                       },
+                            {"string": []},
                             None
                             )
         cls.results = analyser.run_symbolic_execution()

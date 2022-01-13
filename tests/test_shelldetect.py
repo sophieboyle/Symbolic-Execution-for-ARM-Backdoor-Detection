@@ -13,11 +13,7 @@ class TestShellDetection(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         analyser = Analyser(f"code-samples/shell-strings/{cls.code_sample}",
-                                      {"string": [],
-                                       "file_operation": {"fread": [],
-                                                          "fwrite": [],
-                                                          "fopen": []},
-                                       },
+                            {"string": []},
                             None
                             )
         cls.results = analyser.run_symbolic_execution()

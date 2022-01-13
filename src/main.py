@@ -138,19 +138,11 @@ def arg_parsing():
     parser.add_argument('filename', nargs=1,
                         help='Filename of firmware to analyse')
     parser.add_argument('--strings', nargs="+")
-    parser.add_argument('--fread', nargs="+")
-    parser.add_argument('--fwrite', nargs="+")
-    parser.add_argument('--fopen', nargs="+")
     parser.add_argument('--output-file', nargs="?", default=None)
     args = parser.parse_args()
-    get_listen_ports = lambda ports: [int(p) for p in ports] if ports != None else []
-    get_outbound_ports = lambda ips, ports: zip(ips, ports) if ips != None and ports != None else []
 
     return (args.filename,
-            {"string": args.strings,
-             "file_operation": {"fread": args.fread,
-                                "fwrite": args.fwrite,
-                                "fopen": args.fopen},
+            {"string": args.strings
              },
             args.output_file)
 
