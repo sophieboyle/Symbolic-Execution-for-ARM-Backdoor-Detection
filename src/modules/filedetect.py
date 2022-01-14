@@ -47,7 +47,7 @@ class FileAccessDetector:
 
     def fwrite_state(self, state):
         f_ptr = state.solver.eval(state.regs.r3)
-        if f_ptr in self.file_pointer:
+        if f_ptr == self.file_pointer:
             self.result["fwrite"] = True
             return True
         else:
