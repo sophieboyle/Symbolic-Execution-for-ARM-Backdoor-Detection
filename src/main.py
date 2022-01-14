@@ -63,7 +63,8 @@ class Analyser:
 
         file_io_addresses = {"fopen": self.find_func_addr("fopen"),
                              "fwrite": self.find_func_addr("fwrite"),
-                             "fread": self.find_func_addr("fread")
+                             "fread": self.find_func_addr("fread"),
+                             "fscanf": self.find_func_addr("__isoc99_fscanf"),
                              }
         file_access_driver = FileAccessDriver(self.project, self.entry_state, file_io_addresses)
         self.results["file_access_table"] = file_access_driver.run_file_detection()

@@ -17,7 +17,7 @@ class FileAccessDetector:
         limiter = angr.exploration_techniques.lengthlimiter.LengthLimiter(max_length=100, drop=True)
         self.sim.use_technique(limiter)
         self.updated_file_pointer = None
-        self.result = {"fopen": False, "fread": False, "fwrite": False}
+        self.result = {"fopen": False, "fread": False, "fwrite": False, "fscanf": False}
         self.file_pointer = None
 
     def fopen_state(self, state):
@@ -53,6 +53,14 @@ class FileAccessDetector:
         else:
             return False
 
+    def fscanf_state(self, state):
+        f_ptr = state.solver.eval(state.regs.r0)
+        if f_ptr == self.file_pointer:
+            self.result["fscanf"] = True
+            return True
+        else:
+            return False
+
     def file_io_func_state(self, state):
         """
         Function which represents the state at which the instruction pointer points
@@ -69,6 +77,8 @@ class FileAccessDetector:
                 self.fread_state(state)
             elif self.addr_to_func_map[call_addr] == 'fwrite':
                 self.fwrite_state(state)
+            elif self.addr_to_func_map[call_addr] == 'fscanf':
+                self.fscanf_state(state)
         # Hacky fix because for some reason, num_find for sim.explore doesn't work
         return False
 
