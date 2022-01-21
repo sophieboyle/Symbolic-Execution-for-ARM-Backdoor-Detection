@@ -60,10 +60,16 @@ class NetworkDetection:
     """
 
     def __init__(self, project, entry_state, func_name, func_addr, socket_table):
+        self.project = project
         self.sim = project.factory.simgr(entry_state)
+        self.main = project.loader.main_object.get_symbol("main")
+        self.main_state = project.factory.blank_state(addr=self.main.rebased_addr)
+        self.entry_state = entry_state
+
         self.func_name = func_name
         self.func_addr = func_addr
         self.socket_table = socket_table
+
         self.socket = None
         self.ip = None
         self.port = None
@@ -136,9 +142,24 @@ class NetworkDetection:
 
     def net_func_state(self, state):
         if state.ip.args[0] == self.func_addr:
+            block1 = self.project.factory.block(state.solver.eval(state.ip))
+            num_instr = block1.instructions
+
+            # self.sim.step(num_inst=num_instr-1)
             self.sim.step()
+            # Is it taking the first element from the active list that's the problem?
+            # It looks like it, since there are two states active at this point
+
             state = self.sim.active[0]
+
+            block2 = self.project.factory.block(state.solver.eval(state.ip))
+
+            # self.socket_symb = state.regs.r0
             self.socket = state.solver.eval(state.regs.r0)
+
+            # const = state.history.constraints_since(self.main_state.history)
+            # sao_const = const[0].to_claripy()
+            # print(type(sao_const))
 
             if self.func_name == 'bind':
                 self.bind_state(state)
@@ -249,13 +270,14 @@ class NetworkDriver:
         return netlist
 
     def update_socket_info(self, func_call, info):
-        self.socket_table[info["socket"]]["function_calls"][func_call] += 1
-        # Only update IP and port information if connect or bind
-        if func_call in ["connect", "bind"]:
-            if info["ip"] is not None:
-                self.socket_table[info["socket"]]["ip"] = info["ip"]
-            if info["port"] != 0 and info["port"] is not None:
-                self.socket_table[info["socket"]]["port"] = info["port"]
+        if info["socket"] in self.socket_table.keys():
+            self.socket_table[info["socket"]]["function_calls"][func_call] += 1
+            # Only update IP and port information if connect or bind
+            if func_call in ["connect", "bind"]:
+                if info["ip"] is not None:
+                    self.socket_table[info["socket"]]["ip"] = info["ip"]
+                if info["port"] != 0 and info["port"] is not None:
+                    self.socket_table[info["socket"]]["port"] = info["port"]
 
     def update_network_table(self, func_call, info):
         addr = (info["ip"], info["port"])
@@ -266,9 +288,9 @@ class NetworkDriver:
                                         'sendto': [],
                                         'recvfrom': [],
                                         'recv': []}
-        if func_call in ["bind", "connect"]:
+        if func_call in ["bind", "connect"] and info["socket"] in self.socket_table.keys():
             self.network_table[addr][func_call].append(self.socket_table[info["socket"]]["type"])
-        elif func_call in ["send", "sendto", "recvfrom", "recv"]:
+        elif func_call in ["send", "sendto", "recvfrom", "recv"] and info["socket"] in self.socket_table.keys():
             self.network_table[addr][func_call].append((self.socket_table[info["socket"]]["type"],
                                                         info["size"]))
 

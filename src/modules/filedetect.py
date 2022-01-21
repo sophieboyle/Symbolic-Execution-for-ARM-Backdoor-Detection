@@ -8,16 +8,22 @@ class FileAccessDetector:
     on a specific file given by filename.
     """
 
-    def __init__(self, project, entry_state, addr_to_func_map, filename):
+    def __init__(self, project, entry_state, addr_to_func_map, func_prelude_blocks, filename):
         self.sim = project.factory.simgr(entry_state)
+        self.main = project.loader.main_object.get_symbol("main")
+        self.main_state = project.factory.blank_state(addr=self.main.rebased_addr)
+        self.entry_state = entry_state
+        self.project = project
+
         self.addr_to_func_map = addr_to_func_map
+        self.func_prelude_blocks = func_prelude_blocks
         self.filename = filename
         self.result = {}
         self.currently_finding_func_name = None
         limiter = angr.exploration_techniques.lengthlimiter.LengthLimiter(max_length=100, drop=True)
         self.sim.use_technique(limiter)
         self.updated_file_pointer = None
-        self.result = {"fopen": False, "fread": False, "fwrite": False, "fscanf": False}
+        self.result = {"fopen": False, "fread": False, "fwrite": False, "__isoc99_fscanf": False}
         self.file_pointer = None
 
     def fopen_state(self, state):
@@ -56,7 +62,7 @@ class FileAccessDetector:
     def fscanf_state(self, state):
         f_ptr = state.solver.eval(state.regs.r0)
         if f_ptr == self.file_pointer:
-            self.result["fscanf"] = True
+            self.result["__isoc99_fscanf"] = True
             return True
         else:
             return False
@@ -69,16 +75,30 @@ class FileAccessDetector:
         """
         call_addr = state.ip.args[0]
         if call_addr in [k for k in self.addr_to_func_map]:
+            block1 = self.project.factory.block(state.solver.eval(state.ip))
             self.sim.step()
-            state = self.sim.active[0]
-            if self.addr_to_func_map[call_addr] == 'fopen':
-                self.fopen_state(state)
-            elif self.addr_to_func_map[call_addr] == 'fread':
-                self.fread_state(state)
-            elif self.addr_to_func_map[call_addr] == 'fwrite':
-                self.fwrite_state(state)
-            elif self.addr_to_func_map[call_addr] == 'fscanf':
-                self.fscanf_state(state)
+            # state = self.sim.active[0]
+
+            active_state_blocks = []
+            for active_state in self.sim.active:
+                # active_state_blocks.append(self.project.factory.block(state.solver.eval(active_state.ip)))
+                active_block = self.project.factory.block(state.solver.eval(active_state.ip))
+                if active_block not in self.func_prelude_blocks[self.addr_to_func_map[call_addr]]:
+                    continue
+
+                # const = state.history.constraints_since(state.history.parent.parent)
+                # const = state.history.constraints_since(self.main_state.history)
+                # sao_const = const[0].to_claripy()
+                # print(type(sao_const))
+
+                if self.addr_to_func_map[call_addr] == 'fopen':
+                    self.fopen_state(active_state)
+                elif self.addr_to_func_map[call_addr] == 'fread':
+                    self.fread_state(active_state)
+                elif self.addr_to_func_map[call_addr] == 'fwrite':
+                    self.fwrite_state(active_state)
+                elif self.addr_to_func_map[call_addr] == 'fscanf':
+                    self.fscanf_state(active_state)
         # Hacky fix because for some reason, num_find for sim.explore doesn't work
         return False
 
@@ -92,10 +112,12 @@ class FileAccessDriver:
             fileio_addresses should be a dictionary of {func_name: [addresses]}
 
     """
-    def __init__(self, project, entry_state, fileio_func_addresses):
+    def __init__(self, project, entry_state, fileio_func_addresses, func_prelude_blocks):
         self.project = project
         self.entry_state = entry_state
         self.fileio_func_addresses = fileio_func_addresses
+        self.func_prelude_blocks = func_prelude_blocks
+
         self.addr_to_func_map = self.reformat_fileio_func_addresses()
         self.sensitive_files = self.get_sensitive_files('../resources/sensitive-files.csv')
         self.file_table = {}
@@ -119,7 +141,9 @@ class FileAccessDriver:
         if self.fileio_func_addresses and self.sensitive_files:
             for filename in self.sensitive_files:
                 filedetector = FileAccessDetector(self.project, self.entry_state,
-                                                  self.addr_to_func_map, filename)
+                                                  self.addr_to_func_map,
+                                                  self.func_prelude_blocks,
+                                                  filename)
                 file_accesses = filedetector.find()
                 self.file_table[filename] = file_accesses
         self.construct_output_string()
