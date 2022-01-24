@@ -81,7 +81,7 @@ class FileAccessDetector:
 
             active_state_blocks = []
             for active_state in self.sim.active:
-                # active_state_blocks.append(self.project.factory.block(state.solver.eval(active_state.ip)))
+                # TODO: Update state to active_state
                 active_block = self.project.factory.block(state.solver.eval(active_state.ip))
                 if active_block not in self.func_prelude_blocks[self.addr_to_func_map[call_addr]]:
                     continue

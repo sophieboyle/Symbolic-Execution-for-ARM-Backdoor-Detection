@@ -41,7 +41,6 @@ class Analyser:
         nodes = [n for n in self.cfg.nodes() if n.name == func_name]
         call_addresses = [n.predecessors[0].predecessors[0].addr for n in
                           nodes]  # The addresses in main which call the given function
-        func_addresses = [n.addr for n in nodes]
         func_prelude_block_nodes = [n.predecessors[0].block for n in nodes]
         return call_addresses, func_prelude_block_nodes
 
@@ -103,7 +102,7 @@ class Analyser:
                                                          "connect", "send", "sendto",
                                                          "recvfrom", "recv"])
 
-        net_driver = NetworkDriver(self.project, self.entry_state, net_addresses)
+        net_driver = NetworkDriver(self.project, self.entry_state, net_addresses, net_prelude_blocks)
         self.results["network_table"] = net_driver.run_network_detection()
         self.output_string += net_driver.get_output_string()
 
