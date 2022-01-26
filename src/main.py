@@ -41,7 +41,8 @@ class Analyser:
         nodes = [n for n in self.cfg.nodes() if n.name == func_name]
         call_addresses = [n.predecessors[0].predecessors[0].addr for n in
                           nodes]  # The addresses in main which call the given function
-        return call_addresses
+        func_prelude_block_nodes = [n.predecessors[0].block for n in nodes]
+        return call_addresses, func_prelude_block_nodes
 
     def find_paths_to_auth_strings(self, sim, auth_strings):
         for auth_str in auth_strings:
@@ -58,14 +59,28 @@ class Analyser:
         with open(self.output_file, "w") as f:
             f.write(self.output_string)
 
+    def get_addresses_and_blocks_for_func_names(self, func_names):
+        addresses = {}
+        prelude_blocks = {}
+        for func in func_names:
+            addrs, func_prelude_blocks = self.find_func_addr(func)
+            addresses[func] = addrs
+            prelude_blocks[func] = func_prelude_blocks
+        return addresses, prelude_blocks
+
     def run_symbolic_execution(self):
         sim = self.project.factory.simgr(self.entry_state)
 
-        file_io_addresses = {"fopen": self.find_func_addr("fopen"),
-                             "fwrite": self.find_func_addr("fwrite"),
-                             "fread": self.find_func_addr("fread")
-                             }
-        file_access_driver = FileAccessDriver(self.project, self.entry_state, file_io_addresses)
+        # file_io_addresses = {"fopen": self.find_func_addr("fopen"),
+        #                      "fwrite": self.find_func_addr("fwrite"),
+        #                      "fread": self.find_func_addr("fread"),
+        #                      "fscanf": self.find_func_addr("__isoc99_fscanf"),
+        #                      }
+
+        file_io_addresses, file_io_prelude_blocks = self.get_addresses_and_blocks_for_func_names(
+                                                        ["fopen", "fwrite", "fread", "__isoc99_fscanf"])
+
+        file_access_driver = FileAccessDriver(self.project, self.entry_state, file_io_addresses, file_io_prelude_blocks)
         self.results["file_access_table"] = file_access_driver.run_file_detection()
         self.output_string += file_access_driver.get_output_string()
 
@@ -74,15 +89,20 @@ class Analyser:
                 self.find_paths_to_auth_strings(sim, self.authentication_identifiers["string"])
 
         # Run network detection
-        net_addresses = {"socket": self.find_func_addr('socket'),
-                         "accept": self.find_func_addr('accept'),
-                         "bind": self.find_func_addr('bind'),
-                         "connect": self.find_func_addr("connect"),
-                         "send": self.find_func_addr("send"),
-                         "sendto": self.find_func_addr("sendto"),
-                         "recvfrom": self.find_func_addr("recvfrom"),
-                         "recv": self.find_func_addr("recv")}
-        net_driver = NetworkDriver(self.project, self.entry_state, net_addresses)
+        # net_addresses = {"socket": self.find_func_addr('socket'),
+        #                  "accept": self.find_func_addr('accept'),
+        #                  "bind": self.find_func_addr('bind'),
+        #                  "connect": self.find_func_addr("connect"),
+        #                  "send": self.find_func_addr("send"),
+        #                  "sendto": self.find_func_addr("sendto"),
+        #                  "recvfrom": self.find_func_addr("recvfrom"),
+        #                  "recv": self.find_func_addr("recv")}
+        net_addresses, net_prelude_blocks = self.get_addresses_and_blocks_for_func_names(
+                                                        ["socket", "accept", "bind",
+                                                         "connect", "send", "sendto",
+                                                         "recvfrom", "recv"])
+
+        net_driver = NetworkDriver(self.project, self.entry_state, net_addresses, net_prelude_blocks)
         self.results["network_table"] = net_driver.run_network_detection()
         self.output_string += net_driver.get_output_string()
 
