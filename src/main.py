@@ -31,6 +31,7 @@ class Analyser:
         self.results = {}
 
     def find_func_addr(self, func_name):
+        # TODO: Double check that returning predeccors[0] isn't going to cause problems...
         """
         io_funct_name : string name of function to identify
         file_accessed : the filename of the file that the function operates on
@@ -43,6 +44,12 @@ class Analyser:
                           nodes]  # The addresses in main which call the given function
         func_prelude_block_nodes = [n.predecessors[0].block for n in nodes]
         return call_addresses, func_prelude_block_nodes
+
+    def find_post_blocks(self, func_name):
+        # TODO: Double check that returning predeccors[0] isn't going to cause problems...
+        # TODO: Find the block after a function (e.g. socket) is executed, so that we can get the return arg
+        nodes = [n for n in self.cfg.nodes() if n.name == func_name]
+        return [n.successors[0].block for n in nodes]
 
     def find_paths_to_auth_strings(self, sim, auth_strings):
         for auth_str in auth_strings:
@@ -97,12 +104,13 @@ class Analyser:
         #                  "sendto": self.find_func_addr("sendto"),
         #                  "recvfrom": self.find_func_addr("recvfrom"),
         #                  "recv": self.find_func_addr("recv")}
+        socket_post_blocks = self.find_post_blocks("socket")
         net_addresses, net_prelude_blocks = self.get_addresses_and_blocks_for_func_names(
                                                         ["socket", "accept", "bind",
                                                          "connect", "send", "sendto",
                                                          "recvfrom", "recv"])
 
-        net_driver = NetworkDriver(self.project, self.entry_state, net_addresses, net_prelude_blocks)
+        net_driver = NetworkDriver(self.project, self.entry_state, net_addresses, net_prelude_blocks, socket_post_blocks)
         self.results["network_table"] = net_driver.run_network_detection()
         self.output_string += net_driver.get_output_string()
 
