@@ -10,6 +10,7 @@ from parameterized import parameterized_class
     {"code_sample": "file-write", "operations": {"/etc/passwd": ["fopen", "fwrite"]}},
     {"code_sample": "file-fscanf", "operations": {"/etc/passwd": ["fopen", "fscanf"]}},
     {"code_sample": "conditional-file-open", "operations": {"/etc/passwd": ["fopen"]}},
+    {"code_sample": "conditional-multiple-file-open", "operations": {"/etc/passwd": ["fopen"], "/etc/shadow": ["fopen"]}},
 ])
 class TestFileDetection(unittest.TestCase):
     @classmethod
