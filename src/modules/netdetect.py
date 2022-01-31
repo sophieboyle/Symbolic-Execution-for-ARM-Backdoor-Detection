@@ -195,24 +195,35 @@ class NetworkDetection:
 
 
 class SocketDetection:
-    def __init__(self, project, entry_state, sock_addr):
+    def __init__(self, project, entry_state, sock_addr, prelude_blocks, post_blocks):
         self.socket_fd = None
         self.socket_type = None
         self.project = project
         self.sim = project.factory.simgr(entry_state)
         self.sock_addr = sock_addr
+        self.prelude_blocks = prelude_blocks
+        self.post_blocks = post_blocks
 
     def socket_state(self, state):
         if state.ip.args[0] == self.sock_addr:
             self.sim.step()
-            state = self.sim.active[0]
-            self.socket_type = state.solver.eval(state.regs.r1)
+
+            for active_state in self.sim.active:
+                active_block = self.project.factory.block(active_state.solver.eval(active_state.ip))
+                if active_block not in self.prelude_blocks:
+                    continue
+                self.socket_type = active_state.solver.eval(active_state.regs.r1)
+
             # Step until end of function to find return value
             self.sim.step()
             self.sim.step()
-            state = self.sim.active[0]
-            self.socket_fd = state.solver.eval(state.regs.r0)
-            return True
+
+            for active_state in self.sim.active:
+                active_block = self.project.factory.block(active_state.solver.eval(active_state.ip))
+                if active_block not in self.post_blocks:
+                    continue
+                self.socket_fd = active_state.solver.eval(active_state.regs.r0)
+                return True
         return False
 
     def find_socket(self):
@@ -260,11 +271,12 @@ class NetworkDriver:
         }
     """
 
-    def __init__(self, project, entry_state, addresses, prelude_blocks):
+    def __init__(self, project, entry_state, addresses, prelude_blocks, socket_post_blocks):
         self.project = project
         self.entry_state = entry_state
         self.addresses = addresses
         self.prelude_blocks = prelude_blocks
+        self.socket_post_blocks = socket_post_blocks
 
         self.socket_table = self.find_sockets()
         self.network_table = {}
@@ -376,7 +388,7 @@ class NetworkDriver:
         socket_table = {}
         if sock_addrs:
             for addr in sock_addrs:
-                sock_detector = SocketDetection(self.project, self.entry_state, addr)
+                sock_detector = SocketDetection(self.project, self.entry_state, addr, self.prelude_blocks["socket"], self.socket_post_blocks)
                 socket_info = sock_detector.find_socket()
                 socket_table[socket_info[0]] = {"type": socket_type_reference[socket_info[1]],
                                                 "ip": None,
