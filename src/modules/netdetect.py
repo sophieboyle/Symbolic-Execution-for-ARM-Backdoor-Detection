@@ -50,16 +50,20 @@ class InetNtoa(angr.SimProcedure):
 
 
 class NetworkDetection:
-    """
-    Object will take a function address representative of
-    the bind function. It will dump the sockaddr_in struct
-
-    Mode option can choose between finding IP and ports to which outbound
-    traffic is sent (sending), or finding ports on which the
-    binary is listening (listening)
-    """
-
     def __init__(self, project, entry_state, func_name, func_addr, socket_table, prelude_blocks):
+        """
+        Initialises the detector which will run the symbolic execution for finding network
+        functions. Here, the C types for network address information are registered with the
+        angr project. A limiter for the angr project is also set, to avoid long computation
+        times at the cost of limited depth.
+        :param project: The angr project
+        :param entry_state: The entry state where simulation begins
+        :param func_name: The name of the function for the simulation to find
+        :param func_addr: The address of the function for the simulation to find
+        :param socket_table: A dictionary of socket file descriptors matched to their protocol
+        :param prelude_blocks: A list of prelude blocks which may exist before the function
+        block
+        """
         self.project = project
         self.sim = project.factory.simgr(entry_state)
         self.main = project.loader.main_object.get_symbol("main")
@@ -86,29 +90,62 @@ class NetworkDetection:
             'struct sockaddr_in{ unsigned short sin_family; uint16_t sin_port; struct in_addr sin_addr; }'))
 
     def correct_addresses_if_none(self):
+        """
+        If the IP address detected for an activity has been resolved to 0.0.0.0 or port 0,
+        set the address to None for the sake of consistency.
+        :return:
+        """
         if self.ip == '0.0.0.0':
             self.ip = None
         if self.port == 0:
             self.port = None
 
     def bind_state(self, state):
+        """
+        Obtains the sockaddr struct which is passed as a parameter to bind(). From the
+        sockaddr struct, extracts the IP and port bound to.
+        :param state: The state where the bind() function has been reached
+        :return:
+        """
         sockaddr_param = state.mem[state.solver.eval(state.regs.r1)].struct.sockaddr_in.concrete
         self.ip = socket.inet_ntoa(struct.pack('<I', sockaddr_param.sin_addr.s_addr))
         self.port = socket.ntohs(sockaddr_param.sin_port)
 
     def connect_state(self, state):
+        """
+        Obtains the sockaddr struct passed as a parameter to connect(), and extracts the IP
+        and port used from it. Also corrects the address from 0.0.0.0 or port from 0 to None.
+        :param state: The state where the connect() function has been reached
+        :return:
+        """
         sockaddr_param = state.mem[state.solver.eval(state.regs.r1)].struct.sockaddr_in.concrete
         self.ip = socket.inet_ntoa(struct.pack('<I', sockaddr_param.sin_addr.s_addr))
         self.port = socket.ntohs(sockaddr_param.sin_port)
         self.correct_addresses_if_none()
 
     def send_state(self, state):
+        """
+        Gets the size of the message being sent via the send() call. Also cross-references
+        with the socket table to determine the IP and port used for sending.
+        :param state: The state where the send() function has been reached
+        :return:
+        """
         self.size = state.solver.eval(state.regs.r2)
         # IP and port is associated with the socket
         self.ip = self.socket_table[self.socket]["ip"]
         self.port = self.socket_table[self.socket]["port"]
 
     def sendto_state(self, state):
+        """
+        Gets the size of the message being sent via the sendto() call. Must check whether or not
+        the sendto() function was used in connection or connectionless mode, by cross-referencing
+        with the socket table to check the protocol used. If in connection mode, it retrieves
+        the IP and port from the socket table. If in connectionless mode, retrieves the
+        sockaddr struct from the function's parameters and obtains the IP and port. Also makes
+        corrections if necessary.
+        :param state: State where the sendto() function has been reached
+        :return:
+        """
         self.size = state.solver.eval(state.regs.r2)
         if self.socket_table[self.socket]["type"] in [socket_type_reference[1], socket_type_reference[5]]:
             # Connection mode: get IP and port from socket's connect call
@@ -123,12 +160,28 @@ class NetworkDetection:
             self.correct_addresses_if_none()
 
     def recv_state(self, state):
+        """
+        Retrieves the size of the buffer allocated for the received message. Also checks the
+        socket table for the IP and port information
+        :param state: State where the recv() function has been reached
+        :return:
+        """
         self.size = state.solver.eval(state.regs.r2)
         # Get ip and port information from socket
         self.ip = self.socket_table[self.socket]["ip"]
         self.port = self.socket_table[self.socket]["port"]
 
     def recvfrom_state(self, state):
+        """
+        Gets the size of the message being sent via the recvfrom() call. Must check whether or not
+        the recvfrom() function was used in connection or connectionless mode, by cross-referencing
+        with the socket table to check the protocol used. If in connection mode, it retrieves
+        the IP and port from the socket table. If in connectionless mode, retrieves the
+        sockaddr struct from the function's parameters and obtains the IP and port. Also makes
+        corrections if necessary.
+        :param state: State where the recvfrom() function has been reached
+        :return:
+        """
         self.size = state.solver.eval(state.regs.r2)
         # Similar to sendto(), can be used in connection or connectionless mode
         if self.socket_table[self.socket]["type"] in [socket_type_reference[1], socket_type_reference[5]]:
