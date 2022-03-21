@@ -249,6 +249,17 @@ class NetworkDetection:
 
 class SocketDetection:
     def __init__(self, project, entry_state, sock_addr, prelude_blocks, post_blocks):
+        """
+        Initialises the detector which will run symbolic execution to find the given
+        address of a socket() call.
+        :param project: The angr project
+        :param entry_state: The entry state to the symbolic execution
+        :param sock_addr: The address of the socket to find
+        :param prelude_blocks: List of possible prelude blocks which may exist before
+        the block at which the socket() function is called
+        :param post_blocks: List of possible post blocks which may exist after the
+        block at which the socket() function is called
+        """
         self.socket_fd = None
         self.socket_type = None
         self.project = project
@@ -258,6 +269,12 @@ class SocketDetection:
         self.post_blocks = post_blocks
 
     def socket_state(self, state):
+        """
+        Retrieves the file descriptor returned by the socket call. Also retrieves the
+        protocol information passed as a parameter.
+        :param state: The state at which the socket function is called
+        :return:
+        """
         if state.ip.args[0] == self.sock_addr:
             self.sim.step()
 
@@ -280,6 +297,11 @@ class SocketDetection:
         return False
 
     def find_socket(self):
+        """
+        Run the symbolic execution to find the given address of the socket call
+        :return: Integer, file descriptor returned by the socket
+        :return: Integer, the numerical representation of the protocol
+        """
         self.sim.explore(find=self.socket_state)
         return self.socket_fd, self.socket_type
 
@@ -325,6 +347,14 @@ class NetworkDriver:
     """
 
     def __init__(self, project, entry_state, addresses, prelude_blocks, socket_post_blocks):
+        """
+        Initialises the object which will run all symbolic executions for each network function
+        :param project: The angr project
+        :param entry_state: The entry point to the angr project
+        :param addresses: Dictionary of addresses for each network function
+        :param prelude_blocks: Dictionary of the prelude blocks for each network function
+        :param socket_post_blocks: Dictionary of post blocks, specifically for socket functions
+        """
         self.project = project
         self.entry_state = entry_state
         self.addresses = addresses
@@ -338,12 +368,24 @@ class NetworkDriver:
         self.output_string = ""
 
     def get_malicious_net(self, filename):
+        """
+        Retrieve the disallow list of malicious network addresses/ports
+        :param filename: File to read malicious network addresses/ports from
+        :return: A list of strings representing disallowed addresses/ports
+        """
         with open(filename, 'r') as f:
             f.readline()
             netlist = f.read().splitlines()
         return netlist
 
     def update_socket_info(self, func_call, info):
+        """
+        Updates the socket table with information about the function calls being made for a
+        given socket file descriptor
+        :param func_call: The function call which was made
+        :param info: The information gathered from the function call, such as IP/port info
+        :return:
+        """
         if info["socket"] in self.socket_table.keys():
             self.socket_table[info["socket"]]["function_calls"][func_call] += 1
             # Only update IP and port information if connect or bind
@@ -354,6 +396,12 @@ class NetworkDriver:
                     self.socket_table[info["socket"]]["port"] = info["port"]
 
     def update_network_table(self, func_call, info):
+        """
+        Updates the network table with information gathered from analysis.
+        :param func_call: The function call which is to be updated
+        :param info: The information gathered from the function call to be updated
+        :return:
+        """
         addr = (info["ip"], info["port"])
         if addr not in self.network_table.keys():
             self.network_table[addr] = {'bind': [],
@@ -369,6 +417,11 @@ class NetworkDriver:
                                                         info["size"]))
 
     def run_network_detection(self):
+        """
+        Investigates each network function, removes networking which isn't seen as malicious,
+        and builds the output
+        :return: A dictionary representing all malicious networking
+        """
         self.investigate_network_functions("bind", self.addresses["bind"])
         self.investigate_network_functions("connect", self.addresses["connect"])
         self.investigate_network_functions("send", self.addresses["send"])
