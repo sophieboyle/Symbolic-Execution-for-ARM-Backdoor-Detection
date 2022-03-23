@@ -104,44 +104,44 @@ class NetFuncNode:
         self.successors.append(net_func_node)
 
 
-g_paths = []
+class PathSearch:
+    def __init__(self):
+        self.g_paths = []
 
+    def DFS(self, n, visited, path):
+        """
+        Recursive depth first search to find all paths from node n to a destination node.
+        Note that this appends completed paths to the GLOBAL VARIABLE g_paths
+        :param n: The node from which to find a path
+        :param destination: The final node in the path to be reached
+        :param visited: The set of nodes which have already been visited
+        :param path: The current path
+        :return: A list representing a path of nodes
+        """
+        visited.add(n)
+        path.append(n)
+        if n.name == "PathTerminator":
+            self.g_paths.append(path.copy())
+        else:
+            for successor in n.successors:
+                if successor not in visited:
+                    self.DFS(successor, visited, path)
+        path.pop()
+        visited.remove(n)
 
-def DFS(n, visited, path):
-    """
-    Recursive depth first search to find all paths from node n to a destination node.
-    Note that this appends completed paths to the GLOBAL VARIABLE g_paths
-    :param n: The node from which to find a path
-    :param destination: The final node in the path to be reached
-    :param visited: The set of nodes which have already been visited
-    :param path: The current path
-    :return: A list representing a path of nodes
-    """
-    visited.add(n)
-    path.append(n)
-    if n.name == "PathTerminator":
-        g_paths.append(path.copy())
-    else:
-        for successor in n.successors:
-            if successor not in visited:
-                DFS(successor, visited, path)
-    path.pop()
-    visited.remove(n)
-
-
-def get_paths_from_CFG(cfg):
-    """
-    Works up from the deadended nodes of the CFG, iterating over all of the predecessors
-    and building a data structure of all possible paths
-    :param cfg: The control flow graph of the angr project
-    :return: List of lists of blocks for each path, keyed by an arbitrary path ID
-    """
-    main = [n for n in cfg.nodes() if n.name == "main"]
-    # Assumes that only one main node was found
-    if len(main) != 1:
-        raise Exception("Error, multiple main nodes")
-    DFS(main[0], set(), [])
-    return g_paths
+    def get_paths_from_CFG(self, cfg):
+        """
+        Works up from the deadended nodes of the CFG, iterating over all of the predecessors
+        and building a data structure of all possible paths
+        :param cfg: The control flow graph of the angr project
+        :return: List of lists of blocks for each path, keyed by an arbitrary path ID
+        """
+        main = [n for n in cfg.nodes() if n.name == "main"]
+        # Assumes that only one main node was found
+        if len(main) != 1:
+            raise Exception("Error, multiple main nodes")
+        self.DFS(main[0], set(), [])
+        return self.g_paths
 
 
 class NetworkAnalysis:
@@ -164,6 +164,6 @@ class NetworkAnalysis:
             'struct sockaddr_in{ unsigned short sin_family; uint16_t sin_port; struct in_addr sin_addr; }'))
 
     def run(self):
-        # TODO: Explore through all possible paths using depth first traversal
-        paths = get_paths_from_CFG(self.cfg)
+        PathSearcher = PathSearch()
+        paths = PathSearcher.get_paths_from_CFG(self.cfg)
         return
