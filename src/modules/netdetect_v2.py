@@ -104,16 +104,91 @@ class NetFuncNode:
         self.successors.append(net_func_node)
 
 
+def DFS(cfg, n):
+    paths = []
+    stack = [n]
+    visited = set()
+    while stack:
+        n = stack.pop()
+        if n not in visited:
+            visited.add(n)
+            # Add node to the correct paths
+            if paths:
+                new_paths = []
+                for predecessor in n.predecessors:
+                    for path in paths:
+                        pass
+                        # TODO: Add node to paths, creating new paths if necessary
+                        # if predecessor in path:
+            else:
+                paths.append([n])
+            for successor in n.successors:
+                stack.append(successor)
+    return paths
+
+
+def BFS(cfg, n):
+    paths = []
+    stack = [n]
+    visited = set()
+    visited.add(n)
+    while stack:
+        n = stack.pop(0)
+
+        if paths:
+            new_paths = []
+            for path in paths:
+                # TODO: Fix this, it doesn't work because the previous path gets overwritten
+                if path[-1] in n.predecessors:
+                    new_paths.append(path + [n])
+                else:
+                    new_paths.append(path)
+            paths = new_paths
+        else:
+            paths.append([n])
+
+        for successor in n.successors:
+            if successor.name == "__stack_chk_fail":
+                continue
+            visited.add(successor)
+            stack.append(successor)
+
+
+def get_paths_from_CFG(cfg):
+    """
+    Works up from the deadended nodes of the CFG, iterating over all of the predecessors
+    and building a data structure of all possible paths
+    :param cfg: The control flow graph of the angr project
+    :return: List of lists of blocks for each path, keyed by an arbitrary path ID
+    """
+    main = [n for n in cfg.nodes() if n.name == "main"]
+    # Assumes that only one main node was found
+    if len(main) != 1:
+        raise Exception("Error, multiple main nodes")
+    paths = BFS(cfg, main[0])
+    return paths
+
+
 class NetworkAnalysis:
-    def __init__(self, project, entry_state):
+    def __init__(self, project, entry_state, cfg):
         self.project = project
         self.entry_state = entry_state
+        self.sim = project.factory.simgr(entry_state)
+        self.cfg = cfg
 
         self.network_table = {}
         self.malicious_ips = get_malicious_net('../resources/bad-ips.csv')
         self.malicious_ports = get_malicious_net('../resources/bad-ports.csv')
         self.output_string = ""
 
+        limiter = angr.exploration_techniques.lengthlimiter.LengthLimiter(max_length=1000, drop=True)
+        self.sim.use_technique(limiter)
+
+        angr.types.register_types(angr.types.parse_type('struct in_addr{ uint32_t s_addr; }'))
+        angr.types.register_types(angr.types.parse_type(
+            'struct sockaddr_in{ unsigned short sin_family; uint16_t sin_port; struct in_addr sin_addr; }'))
+
     def run(self):
-        # Explore through all possible paths
-        pass
+        # TODO: Explore through all possible paths using depth first traversal
+        paths = get_paths_from_CFG(self.cfg)
+        return
