@@ -104,58 +104,29 @@ class NetFuncNode:
         self.successors.append(net_func_node)
 
 
-def DFS(cfg, n):
-    paths = []
-    stack = [n]
-    visited = set()
-    while stack:
-        n = stack.pop()
-        if n not in visited:
-            visited.add(n)
-            # Add node to the correct paths
-            if paths:
-                new_paths = []
-                for predecessor in n.predecessors:
-                    for path in paths:
-                        pass
-                        # TODO: Add node to paths, creating new paths if necessary
-                        # if predecessor in path:
-            else:
-                paths.append([n])
-            for successor in n.successors:
-                stack.append(successor)
-    return paths
+g_paths = []
 
 
-def BFS(cfg, n):
-    paths = []
-    final_paths = []
-    stack = [n]
-    visited = set()
+def DFS(n, visited, path):
+    """
+    Recursive depth first search to find all paths from node n to a destination node.
+    Note that this appends completed paths to the GLOBAL VARIABLE g_paths
+    :param n: The node from which to find a path
+    :param destination: The final node in the path to be reached
+    :param visited: The set of nodes which have already been visited
+    :param path: The current path
+    :return: A list representing a path of nodes
+    """
     visited.add(n)
-    while stack:
-        n = stack.pop(0)
-
-        if paths:
-            for path in paths:
-                # TODO: Somehow the paths are being duplicated?
-                if path[-1] in n.predecessors:
-                    paths.append(path + [n])
-                # else:
-                #    paths.append(path)
-            paths = paths
-        else:
-            paths.append([n])
-
+    path.append(n)
+    if n.name == "PathTerminator":
+        g_paths.append(path.copy())
+    else:
         for successor in n.successors:
-            if successor.name == "__stack_chk_fail":
-                continue
-            visited.add(successor)
-            stack.append(successor)
-
-    # Only return final paths
-    final_paths = [path for path in paths if path[-1] in cfg.deadends]
-    return final_paths
+            if successor not in visited:
+                DFS(successor, visited, path)
+    path.pop()
+    visited.remove(n)
 
 
 def get_paths_from_CFG(cfg):
@@ -169,8 +140,8 @@ def get_paths_from_CFG(cfg):
     # Assumes that only one main node was found
     if len(main) != 1:
         raise Exception("Error, multiple main nodes")
-    paths = BFS(cfg, main[0])
-    return paths
+    DFS(main[0], set(), [])
+    return g_paths
 
 
 class NetworkAnalysis:
