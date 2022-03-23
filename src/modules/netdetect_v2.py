@@ -129,6 +129,7 @@ def DFS(cfg, n):
 
 def BFS(cfg, n):
     paths = []
+    final_paths = []
     stack = [n]
     visited = set()
     visited.add(n)
@@ -136,14 +137,13 @@ def BFS(cfg, n):
         n = stack.pop(0)
 
         if paths:
-            new_paths = []
             for path in paths:
-                # TODO: Fix this, it doesn't work because the previous path gets overwritten
+                # TODO: Somehow the paths are being duplicated?
                 if path[-1] in n.predecessors:
-                    new_paths.append(path + [n])
-                else:
-                    new_paths.append(path)
-            paths = new_paths
+                    paths.append(path + [n])
+                # else:
+                #    paths.append(path)
+            paths = paths
         else:
             paths.append([n])
 
@@ -152,6 +152,10 @@ def BFS(cfg, n):
                 continue
             visited.add(successor)
             stack.append(successor)
+
+    # Only return final paths
+    final_paths = [path for path in paths if path[-1] in cfg.deadends]
+    return final_paths
 
 
 def get_paths_from_CFG(cfg):
