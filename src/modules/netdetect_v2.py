@@ -292,6 +292,13 @@ class NetworkAnalysis:
             i += 1
 
         while self.sim.active:
+            for state in self.sim.active:
+                state_block = self.project.factory.block(state.solver.eval(state.ip))
+                state_cfg_node = next(filter(lambda node: node.block == state_block, list(self.cfg.nodes())), None)
+                if state_cfg_node:
+                    pass
+                else:
+                    pass
             self.sim.step()
 
         return
