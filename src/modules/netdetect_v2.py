@@ -63,7 +63,7 @@ def get_malicious_net(filename):
 
 
 class NetFuncTree:
-    def __init__(self, socket_fd, protocol, ip, port):
+    def __init__(self, protocol, block, socket_fd=None, ip=None, port=None):
         """
         Initialises the root of a network function tree
         :param socket_fd: Integer socket file descriptor number
@@ -75,6 +75,7 @@ class NetFuncTree:
         self.protocol = protocol
         self.ip = ip
         self.port = port
+        self.block = block
         self.successors = []
 
     def add_successor(self, net_func_node):
@@ -87,12 +88,13 @@ class NetFuncTree:
 
 
 class NetFuncNode:
-    def __init__(self, func_name):
+    def __init__(self, func_name, msg_size=None):
         """
         Creates a node of the network function tree
         :param func_name: String name of the function stored by the node
         """
         self.func_name = func_name
+        self.msg_size = msg_size
         self.successors = []
 
     def add_successor(self, net_func_node):
@@ -288,21 +290,55 @@ class NetworkAnalysis:
         i = 0
         for path in paths:
             path_dict[i] = path
-            self.network_table[i] = path
+            self.network_table[i] = []
             i += 1
 
-        while self.sim.active:
+        # This is necessary since it seems impossible to get a CFG node from a block
+        block_to_cfg = {}
+        for n in list(self.cfg.nodes()):
+            block_to_cfg[n.block] = n
+
+        # Find stack check fail blocks -> these loop infinitely
+        stck_chk_fail_blocks = [n for n in self.cfg.nodes() if n.name == "__stack_chk_fail"]
+
+        while self.sim.active and \
+                len(self.sim.active) != \
+                len([s for s in self.sim.active
+                     if self.project.factory.block(s.solver.eval(s.ip)) in stck_chk_fail_blocks]):
             for state in self.sim.active:
                 state_block = self.project.factory.block(state.solver.eval(state.ip))
                 state_cfg_node = next(filter(lambda node: node.block == state_block, list(self.cfg.nodes())), None)
+
+                # If current block is the successor to a block which called socket or accept
+                # get the file descriptor from this current block and update each network tree node
+                for path_num, func_trees in self.network_table.items():
+                    for func_tree in func_trees:
+                        if func_tree.block in state_block.predecessors:
+                            # Get the socket's file descriptor
+                            func_trees.socket_fd = state.solver.eval(state.regs.r0)
+
+                # Check what path this block applies to
+                path_indexes = []
+                for path_num, path in path_dict.items():
+                    if state_block in path:
+                        path_indexes.append(path_num)
+
                 if state_cfg_node:
-                    if state_cfg_node.name == "socket":
-                        pass
-                    elif state_cfg_node.name == "accept":
-                        pass
-                    elif state_cfg_node.name == "bind":
+                    # If the block is initialising a socket, then create a NetFuncTree node
+                    if state_cfg_node.name == "socket" or state_cfg_node.name == "accept":
+                        if state_cfg_node.name == "socket":
+                            socket_type = state.solver.eval(state.regs.r1)
+                        elif state_cfg_node.name == "accept":
+                            socket_type = 1
+                        net_root_node = NetFuncTree(socket_type, state_block)
+                        for path_index in path_indexes:
+                            self.network_table[path_index].append(net_root_node)
+
+                    if state_cfg_node.name == "bind":
+                        # TODO: Check for IP and port, and create new NetFuncNode if socket is rebound
                         pass
                     elif state_cfg_node.name == "connect":
+                        # TODO: Check for IP and port, and update NetFuncNode if required
                         pass
                     elif state_cfg_node.name == "send":
                         pass
