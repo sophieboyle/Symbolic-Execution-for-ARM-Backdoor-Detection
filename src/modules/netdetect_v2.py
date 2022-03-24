@@ -268,7 +268,9 @@ class NetworkAnalysis:
     def __init__(self, project, entry_state, cfg):
         self.project = project
         self.entry_state = entry_state
-        self.sim = project.factory.simgr(entry_state)
+        self.main = project.loader.main_object.get_symbol("main")
+        self.main_state = project.factory.blank_state(addr=self.main.rebased_addr)
+        self.sim = project.factory.simgr(self.main_state)
         self.cfg = cfg
 
         self.network_table = {}
@@ -276,7 +278,7 @@ class NetworkAnalysis:
         self.malicious_ports = get_malicious_net('../resources/bad-ports.csv')
         self.output_string = ""
 
-        limiter = angr.exploration_techniques.lengthlimiter.LengthLimiter(max_length=1000, drop=True)
+        limiter = angr.exploration_techniques.lengthlimiter.LengthLimiter(max_length=100, drop=True)
         self.sim.use_technique(limiter)
 
         angr.types.register_types(angr.types.parse_type('struct in_addr{ uint32_t s_addr; }'))
@@ -307,20 +309,22 @@ class NetworkAnalysis:
                      if self.project.factory.block(s.solver.eval(s.ip)) in stck_chk_fail_blocks]):
             for state in self.sim.active:
                 state_block = self.project.factory.block(state.solver.eval(state.ip))
-                state_cfg_node = next(filter(lambda node: node.block == state_block, list(self.cfg.nodes())), None)
+                state_cfg_node = next(filter(lambda node: node.addr == state_block.addr, list(self.cfg.nodes())), None)
+                # state_cfg_node = block_to_cfg[state_block] if state_block in block_to_cfg.keys() else None
+                print(state)
 
                 # If current block is the successor to a block which called socket or accept
                 # get the file descriptor from this current block and update each network tree node
                 for path_num, func_trees in self.network_table.items():
                     for func_tree in func_trees:
-                        if func_tree.block in state_block.predecessors:
+                        if func_tree.block.addr in [predecessor.addr for predecessor in state_cfg_node.predecessors]:
                             # Get the socket's file descriptor
-                            func_trees.socket_fd = state.solver.eval(state.regs.r0)
+                            func_tree.socket_fd = state.solver.eval(state.regs.r0)
 
                 # Check what path this block applies to
                 path_indexes = []
                 for path_num, path in path_dict.items():
-                    if state_block in path:
+                    if state_block.addr in [b.addr for b in path]:
                         path_indexes.append(path_num)
 
                 if state_cfg_node:
