@@ -144,6 +144,124 @@ class PathSearch:
         return self.g_paths
 
 
+def correct_addresses_if_none(ip, port):
+    """
+    If the IP address detected for an activity has been resolved to 0.0.0.0 or port 0,
+    set the address to None for the sake of consistency.
+    :return:
+    """
+    if ip == '0.0.0.0':
+        ip = None
+    if port == 0:
+        port = None
+    return ip, port
+
+
+def bind_state(state):
+    """
+    Obtains the sockaddr struct which is passed as a parameter to bind(). From the
+    sockaddr struct, extracts the IP and port bound to
+    :param state: The state where the bind() function has been reached
+    :return:
+    """
+    sockaddr_param = state.mem[state.solver.eval(state.regs.r1)].struct.sockaddr_in.concrete
+    ip = socket.inet_ntoa(struct.pack('<I', sockaddr_param.sin_addr.s_addr))
+    port = socket.ntohs(sockaddr_param.sin_port)
+    return ip, port
+
+
+def connect_state(state):
+    """
+    Obtains the sockaddr struct passed as a parameter to connect(), and extracts the IP
+    and port used from it. Also corrects the address from 0.0.0.0 or port from 0 to None
+    :param state: The state where the connect() function has been reached
+    :return:
+    """
+    sockaddr_param = state.mem[state.solver.eval(state.regs.r1)].struct.sockaddr_in.concrete
+    ip = socket.inet_ntoa(struct.pack('<I', sockaddr_param.sin_addr.s_addr))
+    port = socket.ntohs(sockaddr_param.sin_port)
+    return correct_addresses_if_none(ip, port)
+
+
+def send_state(state, socket_table, socket):
+    """
+    Gets the size of the message being sent via the send() call. Also cross-references
+    with the socket table to determine the IP and port used for sending.
+    :param state: The state where the send() function has been reached
+    :return:
+    """
+    size = state.solver.eval(state.regs.r2)
+    # IP and port is associated with the socket
+    ip = socket_table[socket]["ip"]
+    port = socket_table[socket]["port"]
+    return ip, port, size
+
+
+def sendto_state(state, socket_table, socket):
+    """
+    Gets the size of the message being sent via the sendto() call. Must check whether or not
+    the sendto() function was used in connection or connectionless mode, by cross-referencing
+    with the socket table to check the protocol used. If in connection mode, it retrieves
+    the IP and port from the socket table. If in connectionless mode, retrieves the
+    sockaddr struct from the function's parameters and obtains the IP and port. Also makes
+    corrections if necessary.
+    :param state: State where the sendto() function has been reached
+    :return:
+    """
+    size = state.solver.eval(state.regs.r2)
+    if socket_table[socket]["type"] in [socket_type_reference[1], socket_type_reference[5]]:
+        # Connection mode: get IP and port from socket's connect call
+        ip = socket_table[socket]["ip"]
+        port = socket_table[socket]["port"]
+        return ip, port, size
+    else:
+        # Connectionless mode: get IP and port from stack
+        sockaddr_param = state.mem[
+            state.mem[state.solver.eval(state.regs.sp)].int.concrete].struct.sockaddr_in.concrete
+        ip = socket.inet_ntoa(struct.pack('<I', sockaddr_param.sin_addr.s_addr))
+        port = socket.ntohs(sockaddr_param.sin_port)
+        return correct_addresses_if_none(ip, port), size
+
+
+def recv_state(state, socket_table, socket):
+    """
+    Retrieves the size of the buffer allocated for the received message. Also checks the
+    socket table for the IP and port information
+    :param state: State where the recv() function has been reached
+    :return:
+    """
+    size = state.solver.eval(state.regs.r2)
+    # Get ip and port information from socket
+    ip = socket_table[socket]["ip"]
+    port = socket_table[socket]["port"]
+    return ip, port, size
+
+
+def recvfrom_state(state, socket_table, socket):
+    """
+    Gets the size of the message being sent via the recvfrom() call. Must check whether or not
+    the recvfrom() function was used in connection or connectionless mode, by cross-referencing
+    with the socket table to check the protocol used. If in connection mode, it retrieves
+    the IP and port from the socket table. If in connectionless mode, retrieves the
+    sockaddr struct from the function's parameters and obtains the IP and port. Also makes
+    corrections if necessary.
+    :param state: State where the recvfrom() function has been reached
+    :return:
+    """
+    size = state.solver.eval(state.regs.r2)
+    # Similar to sendto(), can be used in connection or connectionless mode
+    if socket_table[socket]["type"] in [socket_type_reference[1], socket_type_reference[5]]:
+        ip = socket_table[socket]["ip"]
+        port = socket_table[socket]["port"]
+    else:
+        sockaddr_param = state.mem[
+            state.mem[state.solver.eval(state.regs.sp)].int.concrete].struct.sockaddr_in.concrete
+        ip = socket.inet_ntoa(struct.pack('<I', sockaddr_param.sin_addr.s_addr))
+        port = socket.ntohs(sockaddr_param.sin_port)
+        ip, port = correct_addresses_if_none(ip, port)
+    return ip, port, size
+
+
 class NetworkAnalysis:
     def __init__(self, project, entry_state, cfg):
         self.project = project
@@ -166,4 +284,14 @@ class NetworkAnalysis:
     def run(self):
         PathSearcher = PathSearch()
         paths = PathSearcher.get_paths_from_CFG(self.cfg)
+        path_dict = {}
+        i = 0
+        for path in paths:
+            path_dict[i] = path
+            self.network_table[i] = path
+            i += 1
+
+        while self.sim.active:
+            self.sim.step()
+
         return
