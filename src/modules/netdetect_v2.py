@@ -296,7 +296,22 @@ class NetworkAnalysis:
                 state_block = self.project.factory.block(state.solver.eval(state.ip))
                 state_cfg_node = next(filter(lambda node: node.block == state_block, list(self.cfg.nodes())), None)
                 if state_cfg_node:
-                    pass
+                    if state_cfg_node.name == "socket":
+                        pass
+                    elif state_cfg_node.name == "accept":
+                        pass
+                    elif state_cfg_node.name == "bind":
+                        pass
+                    elif state_cfg_node.name == "connect":
+                        pass
+                    elif state_cfg_node.name == "send":
+                        pass
+                    elif state_cfg_node.name == "sendto":
+                        pass
+                    elif state_cfg_node.name == "recvfrom":
+                        pass
+                    elif state_cfg_node.name == "recv":
+                        pass
                 else:
                     pass
             self.sim.step()
