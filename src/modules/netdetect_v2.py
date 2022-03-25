@@ -1,3 +1,5 @@
+import copy
+
 import angr
 import socket
 import struct
@@ -334,7 +336,7 @@ class NetworkAnalysis:
                             socket_type = 1
                         net_root_node = NetFuncTree(socket_type, state_block)
                         for path_index in path_indexes:
-                            self.network_table[path_index].append(net_root_node)
+                            self.network_table[path_index].append(copy.deepcopy(net_root_node))
                         continue
 
                     socket = state.solver.eval(state.regs.r0)
@@ -349,7 +351,7 @@ class NetworkAnalysis:
                             for tree in self.network_table[i]:
                                 tree.ip = ip
                                 tree.port = port
-                                tree.add_successor(net_func_node) if net_func_node not in tree.successors else None
+                                tree.add_successor(copy.deepcopy(net_func_node)) if net_func_node not in tree.successors else None
                     elif state_cfg_node.name == "send":
                         pass
                     elif state_cfg_node.name == "sendto":
