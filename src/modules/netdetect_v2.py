@@ -185,17 +185,17 @@ def connect_state(state):
     return correct_addresses_if_none(ip, port)
 
 
-def send_state(state, socket_table, socket):
+def send_state(state, net_func_tree, socket):
     """
     Gets the size of the message being sent via the send() call. Also cross-references
-    with the socket table to determine the IP and port used for sending.
+    with the socket table to determine the IP and port used for sending
     :param state: The state where the send() function has been reached
     :return:
     """
     size = state.solver.eval(state.regs.r2)
     # IP and port is associated with the socket
-    ip = socket_table[socket]["ip"]
-    port = socket_table[socket]["port"]
+    ip = net_func_tree.ip
+    port = net_func_tree.port
     return ip, port, size
 
 
@@ -310,8 +310,6 @@ class NetworkAnalysis:
             for state in self.sim.active:
                 state_block = self.project.factory.block(state.solver.eval(state.ip))
                 state_cfg_node = next(filter(lambda node: node.addr == state_block.addr, list(self.cfg.nodes())), None)
-                # state_cfg_node = block_to_cfg[state_block] if state_block in block_to_cfg.keys() else None
-                print(state)
 
                 # If current block is the successor to a block which called socket or accept
                 # get the file descriptor from this current block and update each network tree node
@@ -337,13 +335,21 @@ class NetworkAnalysis:
                         net_root_node = NetFuncTree(socket_type, state_block)
                         for path_index in path_indexes:
                             self.network_table[path_index].append(net_root_node)
+                        continue
 
+                    socket = state.solver.eval(state.regs.r0)
                     if state_cfg_node.name == "bind":
                         # TODO: Check for IP and port, and create new NetFuncNode if socket is rebound
                         pass
                     elif state_cfg_node.name == "connect":
-                        # TODO: Check for IP and port, and update NetFuncNode if required
-                        pass
+                        # TODO: Fix duplicates
+                        ip, port = connect_state(state)
+                        net_func_node = NetFuncNode("connect")
+                        for i in path_indexes:
+                            for tree in self.network_table[i]:
+                                tree.ip = ip
+                                tree.port = port
+                                tree.add_successor(net_func_node) if net_func_node not in tree.successors else None
                     elif state_cfg_node.name == "send":
                         pass
                     elif state_cfg_node.name == "sendto":
