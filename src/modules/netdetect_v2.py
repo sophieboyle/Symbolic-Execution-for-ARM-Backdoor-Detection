@@ -349,9 +349,11 @@ class NetworkAnalysis:
                         net_func_node = NetFuncNode("connect")
                         for i in path_indexes:
                             for tree in self.network_table[i]:
-                                tree.ip = ip
-                                tree.port = port
-                                tree.add_successor(copy.deepcopy(net_func_node)) if net_func_node not in tree.successors else None
+                                if tree.socket_fd == socket:
+                                    tree.ip = ip
+                                    tree.port = port
+                                    tree.add_successor(copy.deepcopy(net_func_node)) if net_func_node not in tree.successors else None
+                                    break
                     elif state_cfg_node.name == "send":
                         pass
                     elif state_cfg_node.name == "sendto":
