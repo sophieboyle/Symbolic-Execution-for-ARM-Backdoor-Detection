@@ -341,10 +341,26 @@ class NetworkAnalysis:
 
                     socket = state.solver.eval(state.regs.r0)
                     if state_cfg_node.name == "bind":
-                        # TODO: Check for IP and port, and create new NetFuncNode if socket is rebound
+                        ip, port = bind_state(state)
+                        net_func_node = NetFuncNode("bind")
+                        for i in path_indexes:
+                            for tree in self.network_table[i]:
+                                if tree.socket_fd == socket:
+                                    # If the socket has been rebound, create new socket
+                                    # and re-assign the file descriptor
+                                    if tree.ip is not None and tree.port is not None\
+                                      and tree.ip != ip and tree.port != port:
+                                        new_net_func_tree = NetFuncTree(tree.protocol, tree.block, tree.socket_fd, ip, port)
+                                        self.network_table[i].append(new_net_func_tree)
+                                        tree.socket_fd = None
+                                    # Socket ip, port assigned for the first time
+                                    else:
+                                        tree.ip = ip
+                                        tree.port = port
+                                        tree.add_successor(copy.deepcopy(net_func_node)) if net_func_node not in tree.successors else None
+                                    break
                         pass
                     elif state_cfg_node.name == "connect":
-                        # TODO: Fix duplicates
                         ip, port = connect_state(state)
                         net_func_node = NetFuncNode("connect")
                         for i in path_indexes:
