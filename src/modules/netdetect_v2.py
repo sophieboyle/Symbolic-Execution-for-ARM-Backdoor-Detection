@@ -227,18 +227,14 @@ def sendto_state(state, socket_table, socket):
         return correct_addresses_if_none(ip, port), size
 
 
-def recv_state(state, socket_table, socket):
+def recv_state(state):
     """
-    Retrieves the size of the buffer allocated for the received message. Also checks the
-    socket table for the IP and port information
+    Retrieves the size of the buffer allocated for the received message
     :param state: State where the recv() function has been reached
     :return:
     """
     size = state.solver.eval(state.regs.r2)
-    # Get ip and port information from socket
-    ip = socket_table[socket]["ip"]
-    port = socket_table[socket]["port"]
-    return ip, port, size
+    return size
 
 
 def recvfrom_state(state, socket_table, socket):
@@ -377,7 +373,15 @@ class NetworkAnalysis:
                     elif state_cfg_node.name == "recvfrom":
                         pass
                     elif state_cfg_node.name == "recv":
-                        pass
+                        size = recv_state(state)
+                        for i in path_indexes:
+                            for tree in self.network_table[i]:
+                                if tree.socket_fd == socket:
+                                    net_func_node = NetFuncNode("recv", size)
+                                    tree.add_successor(net_func_node) if not [n for n in tree.successors if n.func_name
+                                                                              == "recv" and n.msg_size == size]\
+                                        else None
+                                    break
                 else:
                     pass
             self.sim.step()
