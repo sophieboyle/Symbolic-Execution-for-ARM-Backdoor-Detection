@@ -187,18 +187,14 @@ def connect_state(state):
     return correct_addresses_if_none(ip, port)
 
 
-def send_state(state, net_func_tree, socket):
+def send_state(state):
     """
-    Gets the size of the message being sent via the send() call. Also cross-references
-    with the socket table to determine the IP and port used for sending
+    Gets the size of the message being sent via the send() call
     :param state: The state where the send() function has been reached
     :return:
     """
     size = state.solver.eval(state.regs.r2)
-    # IP and port is associated with the socket
-    ip = net_func_tree.ip
-    port = net_func_tree.port
-    return ip, port, size
+    return size
 
 
 def sendto_state(state, socket_table, socket):
@@ -367,7 +363,15 @@ class NetworkAnalysis:
                                     tree.add_successor(copy.deepcopy(net_func_node)) if net_func_node not in tree.successors else None
                                     break
                     elif state_cfg_node.name == "send":
-                        pass
+                        size = send_state(state)
+                        for i in path_indexes:
+                            for tree in self.network_table[i]:
+                                if tree.socket_fd == socket:
+                                    net_func_node = NetFuncNode("send", size)
+                                    tree.add_successor(net_func_node) if not [n for n in tree.successors if n.func_name
+                                                                              == "send" and n.msg_size == size]\
+                                        else None
+                                    break
                     elif state_cfg_node.name == "sendto":
                         pass
                     elif state_cfg_node.name == "recvfrom":
