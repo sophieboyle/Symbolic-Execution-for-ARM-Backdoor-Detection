@@ -394,3 +394,22 @@ class NetworkAnalysis:
             self.sim.step()
 
         return
+
+    def analyse(self):
+        self.run()
+        unique_comms = self.get_unique_communications()
+        return unique_comms
+
+    def get_unique_communications(self):
+        unique_comms = {}
+        for path, trees in self.network_table.items():
+            for tree in trees:
+                if (tree.ip, tree.port) not in unique_comms.keys():
+                    unique_comms[(tree.ip, tree.port)] = copy.deepcopy(tree)
+                # if (tree.ip, tree.port) in unique_comms.keys():
+                else:
+                    for successor in tree.successors:
+                        unique_comms[(tree.ip, tree.port)].add_successor(copy.deepcopy(successor)) \
+                            if not [n for n in tree.successors if n.func_name == successor.func_name
+                                    and n.msg_size == successor.msg_size] else None
+        return unique_comms
