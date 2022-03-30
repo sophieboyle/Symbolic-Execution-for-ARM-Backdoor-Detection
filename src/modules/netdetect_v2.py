@@ -279,6 +279,23 @@ class NetworkAnalysis:
         angr.types.register_types(angr.types.parse_type(
             'struct sockaddr_in{ unsigned short sin_family; uint16_t sin_port; struct in_addr sin_addr; }'))
 
+    def add_node_to_network_table(self, func_name, socket, path_indexes, size=None):
+        """
+        Adds a node representing a network function to the network table
+        :param func_name: The name of the network function
+        :param path_indexes: The indexes (list) to the valid paths to which the change might apply
+        :param size: The optional integer size of the message recieved/transmitted
+        :return:
+        """
+        for i in path_indexes:
+            for tree in self.network_table[i]:
+                if tree.socket_fd == socket:
+                    net_func_node = NetFuncNode(func_name, size)
+                    tree.add_successor(net_func_node) if not [n for n in tree.successors if n.func_name
+                                                              == func_name and n.msg_size == size] \
+                        else None
+                    break
+
     def run(self):
         PathSearcher = PathSearch()
         paths = PathSearcher.get_paths_from_CFG(self.cfg)
@@ -364,28 +381,14 @@ class NetworkAnalysis:
                                     break
                     elif state_cfg_node.name == "send":
                         size = send_state(state)
-                        for i in path_indexes:
-                            for tree in self.network_table[i]:
-                                if tree.socket_fd == socket:
-                                    net_func_node = NetFuncNode("send", size)
-                                    tree.add_successor(net_func_node) if not [n for n in tree.successors if n.func_name
-                                                                              == "send" and n.msg_size == size]\
-                                        else None
-                                    break
+                        self.add_node_to_network_table("send", socket, path_indexes, size)
                     elif state_cfg_node.name == "sendto":
                         pass
                     elif state_cfg_node.name == "recvfrom":
                         pass
                     elif state_cfg_node.name == "recv":
                         size = recv_state(state)
-                        for i in path_indexes:
-                            for tree in self.network_table[i]:
-                                if tree.socket_fd == socket:
-                                    net_func_node = NetFuncNode("recv", size)
-                                    tree.add_successor(net_func_node) if not [n for n in tree.successors if n.func_name
-                                                                              == "recv" and n.msg_size == size]\
-                                        else None
-                                    break
+                        self.add_node_to_network_table("recv", socket, path_indexes, size)
                 else:
                     pass
             self.sim.step()
