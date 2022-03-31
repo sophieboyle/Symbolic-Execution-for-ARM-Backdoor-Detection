@@ -79,6 +79,7 @@ class NetFuncTree:
         self.port = port
         self.block = block
         self.successors = []
+        self.func_dict = {"connect":0, "bind":0, "send":0, "recvfrom":0, "recv":0}
 
     def add_successor(self, net_func_node):
         """
@@ -87,6 +88,7 @@ class NetFuncTree:
         :return:
         """
         self.successors.append(net_func_node)
+        self.func_dict[net_func_node.func_name] += 1
 
 
 class NetFuncNode:
@@ -398,6 +400,7 @@ class NetworkAnalysis:
     def analyse(self):
         self.run()
         unique_comms = self.get_unique_communications()
+        print(self.build_output_string(unique_comms))
         return unique_comms
 
     def get_unique_communications(self):
@@ -413,3 +416,26 @@ class NetworkAnalysis:
                             if not [n for n in tree.successors if n.func_name == successor.func_name
                                     and n.msg_size == successor.msg_size] else None
         return unique_comms
+
+
+    def build_output_string(self, net_info):
+        out_str = ""
+        for addr, tree in net_info.items():
+            out_str += '-' * 30 + '\n'
+            out_str += f"IP: {addr[0]}\nPort: {addr[1]}\n"
+            if tree.func_dict["bind"] > 0 and tree.func_dict["connect"] == 0:
+                out_str += f"Type: {socket_type_reference[tree.protocol]}\n" \
+                           f"Listening for inbound traffic.\n"
+            elif tree.func_dict["connect"] > 0 and tree.func_dict["bind"] == 0:
+                out_str += f"Type: {socket_type_reference[tree.protocol]}\n" \
+                           f"Connecting to send outbound traffic.\n"
+            elif tree.func_dict["bind"] and tree.func_dict["connect"]:
+                out_str += f"Type: {socket_type_reference[tree.protocol]}\n" \
+                           f"Socket is both bound and connecting. Unconfirmed behaviour\n"
+            else:
+                out_str += "Socket does not knowingly bind or connect. " \
+                           "Check for usages of sendto or recvfrom.\n"
+            out_str += "\nDetailed network function information:\n"
+            for func, count in tree.func_dict.items():
+                out_str += f"Instances of {func}: {count}\n"
+        return out_str
