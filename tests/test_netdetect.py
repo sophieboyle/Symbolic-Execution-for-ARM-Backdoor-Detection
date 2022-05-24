@@ -5,7 +5,7 @@ from src.main import *
 class TestNetworkDetectionTcpClient(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        analyser = Analyser("code-samples/networking/tcp-client-sample",
+        analyser = Analyser("tests/code-samples/networking/tcp-client-sample",
                             {"string": []},
                             None
                             )
@@ -37,7 +37,7 @@ class TestNetworkDetectionTcpClient(unittest.TestCase):
 class TestNetworkDetectionTcpServer(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        analyser = Analyser("code-samples/networking/tcp-server-sample",
+        analyser = Analyser("tests/code-samples/networking/tcp-server-sample",
                                       {"string": [],
                                        "file_operation": {"fread": [],
                                                           "fwrite": [],
@@ -82,7 +82,7 @@ class TestNetworkDetectionTcpServer(unittest.TestCase):
 class TestNetworkDetectionUdpClient(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        analyser = Analyser("code-samples/networking/udp-client-sample",
+        analyser = Analyser("tests/code-samples/networking/udp-client-sample",
                             {"string": []},
                             None
                             )
@@ -113,7 +113,7 @@ class TestNetworkDetectionUdpClient(unittest.TestCase):
 class TestNetworkDetectionUdpServer(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        analyser = Analyser("code-samples/networking/udp-server-sample",
+        analyser = Analyser("tests/code-samples/networking/udp-server-sample",
                             {"string": []},
                             None
                             )
@@ -153,7 +153,7 @@ class TestNetworkDetectionUdpServer(unittest.TestCase):
 class TestNetworkDetectionConditionalConnect(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        analyser = Analyser("code-samples/networking/conditional-connect-sample",
+        analyser = Analyser("tests/code-samples/networking/conditional-connect-sample",
                             {"string": []},
                             None
                             )
@@ -183,7 +183,7 @@ class TestNetworkDetectionConditionalConnect(unittest.TestCase):
 class TestNetworkDetectionConditionalSocket(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        analyser = Analyser("code-samples/networking/conditional-socket",
+        analyser = Analyser("tests/code-samples/networking/conditional-socket",
                             {"string": []},
                             None
                             )

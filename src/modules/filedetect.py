@@ -119,7 +119,7 @@ class FileAccessDriver:
         self.func_prelude_blocks = func_prelude_blocks
 
         self.addr_to_func_map = self.reformat_fileio_func_addresses()
-        self.sensitive_files = self.get_sensitive_files('../resources/sensitive-files.csv')
+        self.sensitive_files = self.get_sensitive_files('resources/sensitive-files.csv')
         self.file_table = {}
         self.file_pointer_tracker = {}
         self.output_string = '-'*30+'\n'
