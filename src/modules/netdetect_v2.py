@@ -126,7 +126,7 @@ class PathSearch:
         """
         visited.add(n)
         path.append(n)
-        if n.name == "PathTerminator":
+        if n.name == "PathTerminator" or n.name == "exit":
             self.g_paths.append(path.copy())
         else:
             for successor in n.successors:
@@ -270,8 +270,8 @@ class NetworkAnalysis:
         self.cfg = cfg
 
         self.network_table = {}
-        self.malicious_ips = get_malicious_net('../resources/bad-ips.csv')
-        self.malicious_ports = get_malicious_net('../resources/bad-ports.csv')
+        self.malicious_ips = get_malicious_net('resources/bad-ips.csv')
+        self.malicious_ports = get_malicious_net('resources/bad-ports.csv')
         self.output_string = ""
 
         limiter = angr.exploration_techniques.lengthlimiter.LengthLimiter(max_length=100, drop=True)
@@ -400,7 +400,7 @@ class NetworkAnalysis:
     def analyse(self):
         self.run()
         unique_comms = self.get_unique_communications()
-        print(self.build_output_string(unique_comms))
+        # print(self.build_output_string(unique_comms))
         return unique_comms
 
     def get_unique_communications(self):

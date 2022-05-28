@@ -1,5 +1,5 @@
 import argparse
-from src.modules.netdetect import *
+from src.modules.netdetect_v2 import *
 from src.modules.shelldetect import *
 from src.modules.filedetect import *
 
@@ -120,9 +120,13 @@ class Analyser:
                                                         ["socket", "accept", "bind",
                                                          "connect", "send", "sendto",
                                                          "recvfrom", "recv"])
-        net_driver = NetworkDriver(self.project, self.entry_state, net_addresses, net_prelude_blocks, socket_post_blocks)
-        self.results["network_table"] = net_driver.run_network_detection()
-        self.output_string += net_driver.get_output_string()
+        # net_driver = NetworkDriver(self.project, self.entry_state, net_addresses, net_prelude_blocks, socket_post_blocks)
+        #self.results["network_table"] = net_driver.run_network_detection()
+        #self.output_string += net_driver.get_output_string()
+
+        net_driver = NetworkAnalysis(self.project, self.entry_state, self.cfg)
+        self.results["network_table"] = net_driver.analyse()
+        self.output_string += net_driver.build_output_string(self.results["network_table"])
 
         # Detect shell commands
         shellcmd_detect = ShellCommandDetection(self.filename)
