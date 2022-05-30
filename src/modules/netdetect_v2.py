@@ -79,7 +79,8 @@ class NetFuncTree:
         self.port = port
         self.block = block
         self.successors = []
-        self.func_dict = {"connect":0, "bind":0, "send":0, "recvfrom":0, "recv":0}
+        self.func_dict = {"connect":0, "bind":0, "send":0, "recvfrom":0, "recv":0,
+                          "sendto":0}
 
     def add_successor(self, net_func_node):
         """
@@ -199,7 +200,7 @@ def send_state(state):
     return size
 
 
-def sendto_state(state, socket_table, socket):
+def sendto_state(state):
     """
     Gets the size of the message being sent via the sendto() call. Must check whether or not
     the sendto() function was used in connection or connectionless mode, by cross-referencing
@@ -211,18 +212,15 @@ def sendto_state(state, socket_table, socket):
     :return:
     """
     size = state.solver.eval(state.regs.r2)
-    if socket_table[socket]["type"] in [socket_type_reference[1], socket_type_reference[5]]:
-        # Connection mode: get IP and port from socket's connect call
-        ip = socket_table[socket]["ip"]
-        port = socket_table[socket]["port"]
-        return ip, port, size
-    else:
-        # Connectionless mode: get IP and port from stack
-        sockaddr_param = state.mem[
-            state.mem[state.solver.eval(state.regs.sp)].int.concrete].struct.sockaddr_in.concrete
-        ip = socket.inet_ntoa(struct.pack('<I', sockaddr_param.sin_addr.s_addr))
-        port = socket.ntohs(sockaddr_param.sin_port)
-        return correct_addresses_if_none(ip, port), size
+    # Try get IP and port from stack regardless of connection/connectionless mode
+    # Whether the socket is connection/connectionless is determined by the caller
+    # Therefore note that the return for ip:port may be garbage
+    sockaddr_param = state.mem[
+        state.mem[state.solver.eval(state.regs.sp)].int.concrete].struct.sockaddr_in.concrete
+    ip = socket.inet_ntoa(struct.pack('<I', sockaddr_param.sin_addr.s_addr))
+    port = socket.ntohs(sockaddr_param.sin_port)
+    corrected_addr_info = correct_addresses_if_none(ip, port)
+    return corrected_addr_info[0], corrected_addr_info[1], size
 
 
 def recv_state(state):
@@ -283,7 +281,7 @@ class NetworkAnalysis:
 
     def add_node_to_network_table(self, func_name, socket, path_indexes, size=None):
         """
-        Adds a node representing a network function to the network table
+        Adds a node representing a network function to the network table by reading its file descriptor
         :param func_name: The name of the network function
         :param path_indexes: The indexes (list) to the valid paths to which the change might apply
         :param size: The optional integer size of the message recieved/transmitted
@@ -385,7 +383,21 @@ class NetworkAnalysis:
                         size = send_state(state)
                         self.add_node_to_network_table("send", socket, path_indexes, size)
                     elif state_cfg_node.name == "sendto":
-                        pass
+                        ip, port, size = sendto_state(state)
+                        net_func_node = NetFuncNode("sendto", size)
+                        for i in path_indexes:
+                            for tree in self.network_table[i]:
+                                if tree.socket_fd == socket:
+                                    # If in connection mode
+                                    if tree.protocol in [1, 5]:
+                                        # Just use the socket's ip:port
+                                        tree.add_successor(copy.deepcopy(net_func_node)) if net_func_node not in tree.successors else None
+                                    # If in connectionless mode
+                                    else:
+                                        # Assign the socket with the ip:port specified
+                                        tree.ip = ip
+                                        tree.port = port
+                                        tree.add_successor(copy.deepcopy(net_func_node)) if net_func_node not in tree.successors else None
                     elif state_cfg_node.name == "recvfrom":
                         pass
                     elif state_cfg_node.name == "recv":
