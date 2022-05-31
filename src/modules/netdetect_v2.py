@@ -179,7 +179,7 @@ def bind_state(state):
 
 def connect_state(state):
     """
-    Obtains the sockaddr struct passed as a parameter to connect(), and extracts the IP
+    Obtains the sockaddr sgtruct passed as a parameter to connect(), and extracts the IP
     and port used from it. Also corrects the address from 0.0.0.0 or port from 0 to None
     :param state: The state where the connect() function has been reached
     :return:
@@ -233,7 +233,7 @@ def recv_state(state):
     return size
 
 
-def recvfrom_state(state, socket_table, socket):
+def recvfrom_state(state):
     """
     Gets the size of the message being sent via the recvfrom() call. Must check whether or not
     the recvfrom() function was used in connection or connectionless mode, by cross-referencing
@@ -246,15 +246,14 @@ def recvfrom_state(state, socket_table, socket):
     """
     size = state.solver.eval(state.regs.r2)
     # Similar to sendto(), can be used in connection or connectionless mode
-    if socket_table[socket]["type"] in [socket_type_reference[1], socket_type_reference[5]]:
-        ip = socket_table[socket]["ip"]
-        port = socket_table[socket]["port"]
-    else:
-        sockaddr_param = state.mem[
-            state.mem[state.solver.eval(state.regs.sp)].int.concrete].struct.sockaddr_in.concrete
-        ip = socket.inet_ntoa(struct.pack('<I', sockaddr_param.sin_addr.s_addr))
-        port = socket.ntohs(sockaddr_param.sin_port)
-        ip, port = correct_addresses_if_none(ip, port)
+    # Try get IP and port from stack regardless of connection/connectionless mode
+    # Whether the socket is connection/connectionless is determined by the caller
+    # Therefore note that the return for ip:port may be garbage
+    sockaddr_param = state.mem[
+        state.mem[state.solver.eval(state.regs.sp)].int.concrete].struct.sockaddr_in.concrete
+    ip = socket.inet_ntoa(struct.pack('<I', sockaddr_param.sin_addr.s_addr))
+    port = socket.ntohs(sockaddr_param.sin_port)
+    ip, port = correct_addresses_if_none(ip, port)
     return ip, port, size
 
 
@@ -399,7 +398,21 @@ class NetworkAnalysis:
                                         tree.port = port
                                         tree.add_successor(copy.deepcopy(net_func_node)) if net_func_node not in tree.successors else None
                     elif state_cfg_node.name == "recvfrom":
-                        pass
+                        ip, port, size = recvfrom_state(state)
+                        net_func_node = NetFuncNode("recvfrom", size)
+                        for i in path_indexes:
+                            for tree in self.network_table[i]:
+                                if tree.socket_fd == socket:
+                                    # If in connection mode
+                                    if tree.protocol in [1, 5]:
+                                        # Just use the socket's ip:port
+                                        tree.add_successor(copy.deepcopy(net_func_node)) if net_func_node not in tree.successors else None
+                                    # If in connectionless mode
+                                    else:
+                                        # Assign the socket with the ip:port specified
+                                        tree.ip = ip
+                                        tree.port = port
+                                        tree.add_successor(copy.deepcopy(net_func_node)) if net_func_node not in tree.successors else None
                     elif state_cfg_node.name == "recv":
                         size = recv_state(state)
                         self.add_node_to_network_table("recv", socket, path_indexes, size)
