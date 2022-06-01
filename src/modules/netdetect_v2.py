@@ -425,8 +425,8 @@ class NetworkAnalysis:
     def analyse(self):
         self.run()
         unique_comms = self.get_unique_communications()
-        # print(self.build_output_string(unique_comms))
-        return unique_comms
+        final_comms = self.remove_null_comms(unique_comms)
+        return final_comms
 
     def get_unique_communications(self):
         unique_comms = {}
@@ -442,6 +442,19 @@ class NetworkAnalysis:
                                     and n.msg_size == successor.msg_size] else None
         return unique_comms
 
+    def remove_null_comms(self, comms_table):
+        """
+        This function exists to remove null communication detections from a dictionary. These null communications appear
+        when a socket in a path is only initialised, but never used.
+
+        :param comms_table: a dictionary of (ip:port) keys bound to a NetFuncTree object
+        :returns: a dictionary of (ip:port) keys bound to a NetFuncTree object, with no connections
+        """
+        new_comms = {}
+        for k, netfunctree in comms_table.items():
+            if not (k == (None, None) and len(netfunctree.successors) == 0):
+                new_comms[k] = netfunctree
+        return new_comms
 
     def build_output_string(self, net_info):
         out_str = ""
