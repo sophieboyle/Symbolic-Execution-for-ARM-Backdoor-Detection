@@ -274,6 +274,9 @@ class NetworkAnalysis:
         limiter = angr.exploration_techniques.lengthlimiter.LengthLimiter(max_length=100, drop=True)
         self.sim.use_technique(limiter)
 
+        loopseer = angr.exploration_techniques.LoopSeer(cfg=self.cfg, bound=0)
+        self.sim.use_technique(loopseer)
+
         angr.types.register_types(angr.types.parse_type('struct in_addr{ uint32_t s_addr; }'))
         angr.types.register_types(angr.types.parse_type(
             'struct sockaddr_in{ unsigned short sin_family; uint16_t sin_port; struct in_addr sin_addr; }'))
@@ -413,6 +416,7 @@ class NetworkAnalysis:
                                         tree.ip = ip
                                         tree.port = port
                                         tree.add_successor(copy.deepcopy(net_func_node)) if net_func_node not in tree.successors else None
+                                        print("test")
                     elif state_cfg_node.name == "recv":
                         size = recv_state(state)
                         self.add_node_to_network_table("recv", socket, path_indexes, size)
