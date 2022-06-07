@@ -335,8 +335,15 @@ class NetworkAnalysis:
                 # Check what path this block applies to
                 path_indexes = []
                 for path_num, path in path_dict.items():
+                    # TODO: Add conditional to ensure that the predecessor to the block must be in the path?
+                    # not set([s.addr for s in state_cfg_node.predecessors[0].predecessors]).isdisjoint([b.addr for b in path]):
+                    test = state.history.bbl_addrs
                     if state_block.addr in [b.addr for b in path]:
-                        path_indexes.append(path_num)
+                        if len(state.history.bbl_addrs) > 2:
+                            if list(state.history.bbl_addrs)[-2] in [b.addr for b in path]:
+                                path_indexes.append(path_num)
+                        else:
+                            path_indexes.append(path_num)
 
                 if state_cfg_node:
                     # If the block is initialising a socket, then create a NetFuncTree node
@@ -465,15 +472,13 @@ class NetworkAnalysis:
         for addr, tree in net_info.items():
             out_str += '-' * 30 + '\n'
             out_str += f"IP: {addr[0]}\nPort: {addr[1]}\n"
+            out_str += f"Type: {socket_type_reference[tree.protocol]}\n"
             if tree.func_dict["bind"] > 0 and tree.func_dict["connect"] == 0:
-                out_str += f"Type: {socket_type_reference[tree.protocol]}\n" \
-                           f"Listening for inbound traffic.\n"
+                out_str += f"Listening for inbound traffic.\n"
             elif tree.func_dict["connect"] > 0 and tree.func_dict["bind"] == 0:
-                out_str += f"Type: {socket_type_reference[tree.protocol]}\n" \
-                           f"Connecting to send outbound traffic.\n"
+                out_str += f"Connecting to send outbound traffic.\n"
             elif tree.func_dict["bind"] and tree.func_dict["connect"]:
-                out_str += f"Type: {socket_type_reference[tree.protocol]}\n" \
-                           f"Socket is both bound and connecting. Unconfirmed behaviour\n"
+                out_str += f"Socket is both bound and connecting. Unconfirmed behaviour\n"
             else:
                 out_str += "Socket does not knowingly bind or connect. " \
                            "Check for usages of sendto or recvfrom.\n"
