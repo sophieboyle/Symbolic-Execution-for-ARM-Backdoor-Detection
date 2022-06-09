@@ -7,15 +7,57 @@ from parameterized import parameterized_class
 @parameterized_class([
     {"code_sample": "tcp-client-sample",
         "comms": {('127.0.0.1', 8888): {"protocol": 1,
-                                        "functions":
-                                            {
+                                        "functions": {
                                              "connect": {"number": 1},
                                              "send": {"number": 1, "size": None},
                                              "recv": {"number": 1, "size": None},
                                             }
                                         }
-        }
+                }
      },
+    {"code_sample": "tcp-server-sample",
+        "comms": {('0.0.0.0', 8888): {"protocol": 1,
+                                      "functions": {
+                                          "bind": {"number": 1}
+                                          }
+                                      },
+                  (None, None): {"protocol": 1,
+                                 "functions": {
+                                         "recv": {"number": 1}
+                                     }
+                                 }
+                  }
+    },
+    {"code_sample": "udp-client-sample",
+        "comms": {('127.0.0.1', 8888): {"protocol": 2,
+                                        "functions": {
+                                            "sendto": {"number": 1, "size": None},
+                                            "recvfrom": {"number": 1, "size": None}
+                                            }
+                                        }
+                  }
+    },
+    {"code_sample": "connected_udpclient",
+        "comms": {('127.0.0.1', 5000): {"protocol": 2,
+                                        "functions": {
+                                            "connect": {"number": 1},
+                                            "sendto": {"number": 1, "size": None},
+                                            "recvfrom": {"number": 1, "size": None}
+                                            }
+                                        }
+                  }
+    },
+    {"code_sample": "udp-server-sample",
+        "comms": {('0.0.0.0', 8888): {"protocol": 2,
+                                      "functions": {
+                                          "bind": {"number": 1}
+                                      }},
+                  (None, None): {"protocol": 2,
+                                 "functions": {
+                                     "sendto": 1,
+                                     "recvfrom": 1
+                                 }}}
+     }
 ])
 class TestNetworkDetection(unittest.TestCase):
     @classmethod

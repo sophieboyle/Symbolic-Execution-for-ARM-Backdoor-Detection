@@ -82,6 +82,12 @@ class NetFuncTree:
         self.func_dict = {"connect":0, "bind":0, "send":0, "recvfrom":0, "recv":0,
                           "sendto":0}
 
+        # udp_type is set to "established" or "unconnected" for UDP sockets
+        if protocol == 2:
+            self.udp_type = "unconnected"
+        else:
+            self.udp_type = None
+
     def add_successor(self, net_func_node):
         """
         Add a successor network function node to the root node
@@ -90,6 +96,10 @@ class NetFuncTree:
         """
         self.successors.append(net_func_node)
         self.func_dict[net_func_node.func_name] += 1
+        if net_func_node.func_name == "bind" and self.protocol == 2:
+            self.udp_type = "established_bound"
+        elif net_func_node.func_name == "connect" and self.protocol == 2:
+            self.udp_type = "established_connected"
 
 
 class NetFuncNode:
@@ -370,6 +380,7 @@ class NetworkAnalysis:
                                       and tree.ip != ip and tree.port != port:
                                         new_net_func_tree = NetFuncTree(tree.protocol, tree.block, tree.socket_fd, ip, port)
                                         self.network_table[i].append(new_net_func_tree)
+                                        # TODO: Add bind NetFuncNode to new net func tree?
                                         tree.socket_fd = None
                                     # Socket ip, port assigned for the first time
                                     else:
@@ -384,9 +395,22 @@ class NetworkAnalysis:
                         for i in path_indexes:
                             for tree in self.network_table[i]:
                                 if tree.socket_fd == socket:
-                                    tree.ip = ip
-                                    tree.port = port
-                                    tree.add_successor(copy.deepcopy(net_func_node)) if net_func_node not in tree.successors else None
+                                    if tree.protocol == 2:
+                                        # If UDP connection, must create new netfunctree with the same socket
+                                        # file descriptor in case of a bind() followed by connect().
+                                        # Should also remove file descriptor from the bound socket
+                                        new_net_func_tree = NetFuncTree(tree.protocol, tree.block, tree.socket_fd, ip, port)
+                                        new_net_func_tree.ip = ip
+                                        new_net_func_tree.port = port
+                                        new_net_func_tree.add_successor(copy.deepcopy(
+                                            net_func_node)) if net_func_node not in tree.successors else None
+                                        self.network_table[i].append(new_net_func_tree)
+                                        tree.socket_fd = None
+                                    else:
+                                        # Regular TCP communication
+                                        tree.ip = ip
+                                        tree.port = port
+                                        tree.add_successor(copy.deepcopy(net_func_node)) if net_func_node not in tree.successors else None
                                     break
                     elif state_cfg_node.name == "send":
                         size = send_state(state)
@@ -397,13 +421,13 @@ class NetworkAnalysis:
                         for i in path_indexes:
                             for tree in self.network_table[i]:
                                 if tree.socket_fd == socket:
-                                    # If in connection mode
-                                    if tree.protocol in [1, 5]:
-                                        # Just use the socket's ip:port
+                                    # If TCP or established_connected UDP Just use the socket's ip:port
+                                    if tree.protocol in [1, 5] or \
+                                            (tree.protocol == 2 and tree.udp_type == "established_connected"):
                                         tree.add_successor(copy.deepcopy(net_func_node)) if net_func_node not in tree.successors else None
-                                    # If in connectionless mode
+                                    # If unestablished UDP: Assign the socket with the ip:port specified?
                                     else:
-                                        # Assign the socket with the ip:port specified
+                                        # TODO: What if established and bound?
                                         tree.ip = ip
                                         tree.port = port
                                         tree.add_successor(copy.deepcopy(net_func_node)) if net_func_node not in tree.successors else None
@@ -413,17 +437,22 @@ class NetworkAnalysis:
                         for i in path_indexes:
                             for tree in self.network_table[i]:
                                 if tree.socket_fd == socket:
-                                    # If in connection mode
-                                    if tree.protocol in [1, 5]:
-                                        # Just use the socket's ip:port
+                                    # If TCP or established_connected UDP: use the socket's IP and port
+                                    if tree.protocol in [1, 5] or \
+                                            (tree.protocol == 2 and tree.udp_type == "established_connected"):
                                         tree.add_successor(copy.deepcopy(net_func_node)) if net_func_node not in tree.successors else None
-                                    # If in connectionless mode
+                                    else:
+                                        # TODO: Idk what to do yet, but something needs to be done here
+                                        pass
+                                    """
                                     else:
                                         # Assign the socket with the ip:port specified
+                                        # TODO: Fix this - it overwrites socket ip:port incorrectly in the case of a udpserver
                                         tree.ip = ip
                                         tree.port = port
                                         tree.add_successor(copy.deepcopy(net_func_node)) if net_func_node not in tree.successors else None
                                         print("test")
+                                    """
                     elif state_cfg_node.name == "recv":
                         size = recv_state(state)
                         self.add_node_to_network_table("recv", socket, path_indexes, size)
