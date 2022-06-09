@@ -217,7 +217,7 @@ def sendto_state(state):
     with the socket table to check the protocol used. If in connection mode, it retrieves
     the IP and port from the socket table. If in connectionless mode, retrieves the
     sockaddr struct from the function's parameters and obtains the IP and port. Also makes
-    corrections if necessary.
+    corrections if necess ary.
     :param state: State where the sendto() function has been reached
     :return:
     """
@@ -403,7 +403,7 @@ class NetworkAnalysis:
                                         new_net_func_tree.ip = ip
                                         new_net_func_tree.port = port
                                         new_net_func_tree.add_successor(copy.deepcopy(
-                                            net_func_node)) if net_func_node not in tree.successors else None
+                                            net_func_node)) if net_func_node not in new_net_func_tree.successors else None
                                         self.network_table[i].append(new_net_func_tree)
                                         tree.socket_fd = None
                                     else:
@@ -435,24 +435,33 @@ class NetworkAnalysis:
                         ip, port, size = recvfrom_state(state)
                         net_func_node = NetFuncNode("recvfrom", size)
                         for i in path_indexes:
+                            recvfrom_node_added = False
                             for tree in self.network_table[i]:
                                 if tree.socket_fd == socket:
                                     # If TCP or established_connected UDP: use the socket's IP and port
                                     if tree.protocol in [1, 5] or \
                                             (tree.protocol == 2 and tree.udp_type == "established_connected"):
                                         tree.add_successor(copy.deepcopy(net_func_node)) if net_func_node not in tree.successors else None
-                                    else:
-                                        # TODO: Idk what to do yet, but something needs to be done here
-                                        pass
-                                    """
-                                    else:
-                                        # Assign the socket with the ip:port specified
-                                        # TODO: Fix this - it overwrites socket ip:port incorrectly in the case of a udpserver
-                                        tree.ip = ip
-                                        tree.port = port
-                                        tree.add_successor(copy.deepcopy(net_func_node)) if net_func_node not in tree.successors else None
-                                        print("test")
-                                    """
+                                        recvfrom_node_added = True
+                                    elif tree.protocol == 2 and tree.ip is None and tree.port is None:
+                                        tree.add_successor(copy.deepcopy(
+                                            net_func_node)) if net_func_node not in tree.successors else None
+                                        recvfrom_node_added = True
+                            if not recvfrom_node_added:
+                                # Create new None:None connection
+                                new_net_func_tree = NetFuncTree(2, state_block, socket)
+                                new_net_func_tree.add_successor(copy.deepcopy(
+                                    net_func_node)) if net_func_node not in new_net_func_tree.successors else None
+                                self.network_table[i].append(new_net_func_tree)
+                                """
+                                else:
+                                    # Assign the socket with the ip:port specified
+                                    # TODO: Fix this - it overwrites socket ip:port incorrectly in the case of a udpserver
+                                    tree.ip = ip
+                                    tree.port = port
+                                    tree.add_successor(copy.deepcopy(net_func_node)) if net_func_node not in tree.successors else None
+                                    print("test")
+                                """
                     elif state_cfg_node.name == "recv":
                         size = recv_state(state)
                         self.add_node_to_network_table("recv", socket, path_indexes, size)
@@ -478,7 +487,8 @@ class NetworkAnalysis:
                 else:
                     for successor in tree.successors:
                         unique_comms[(tree.ip, tree.port)].add_successor(copy.deepcopy(successor)) \
-                            if not [n for n in tree.successors if n.func_name == successor.func_name
+                            if not [n for n in unique_comms[(tree.ip, tree.port)].successors
+                                    if n.func_name == successor.func_name
                                     and n.msg_size == successor.msg_size] else None
         return unique_comms
 
