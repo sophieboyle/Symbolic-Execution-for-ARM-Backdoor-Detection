@@ -362,6 +362,7 @@ class NetworkAnalysis:
                         tree.add_successor(
                             copy.deepcopy(net_func_node)) if net_func_node not in tree.successors else None
                         sendto_node_added = True
+                        break
                     # If unestablished UDP: Assign the socket with the ip:port specified?
                     elif not tree.udp_type == "established_bound":
                         tree.ip = ip
@@ -369,6 +370,7 @@ class NetworkAnalysis:
                         tree.add_successor(
                             copy.deepcopy(net_func_node)) if net_func_node not in tree.successors else None
                         sendto_node_added = True
+                        break
             if not sendto_node_added:
                 new_net_func_tree = NetFuncTree(2, state_block, socket)
                 new_net_func_tree.add_successor(copy.deepcopy(
@@ -386,10 +388,12 @@ class NetworkAnalysis:
                         tree.add_successor(
                             copy.deepcopy(net_func_node)) if net_func_node not in tree.successors else None
                         recvfrom_node_added = True
+                        break
                     elif tree.protocol == 2 and tree.ip is None and tree.port is None:
                         tree.add_successor(copy.deepcopy(
                             net_func_node)) if net_func_node not in tree.successors else None
                         recvfrom_node_added = True
+                        break
             if not recvfrom_node_added:
                 # Create new None:None connection
                 new_net_func_tree = NetFuncTree(2, state_block, socket)
