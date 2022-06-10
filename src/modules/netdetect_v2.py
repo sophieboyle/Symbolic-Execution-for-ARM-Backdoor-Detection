@@ -419,18 +419,25 @@ class NetworkAnalysis:
                         ip, port, size = sendto_state(state)
                         net_func_node = NetFuncNode("sendto", size)
                         for i in path_indexes:
+                            sendto_node_added = False
                             for tree in self.network_table[i]:
                                 if tree.socket_fd == socket:
                                     # If TCP or established_connected UDP Just use the socket's ip:port
                                     if tree.protocol in [1, 5] or \
                                             (tree.protocol == 2 and tree.udp_type == "established_connected"):
                                         tree.add_successor(copy.deepcopy(net_func_node)) if net_func_node not in tree.successors else None
+                                        sendto_node_added = True
                                     # If unestablished UDP: Assign the socket with the ip:port specified?
-                                    else:
-                                        # TODO: What if established and bound?
+                                    elif not tree.udp_type == "established_bound":
                                         tree.ip = ip
                                         tree.port = port
                                         tree.add_successor(copy.deepcopy(net_func_node)) if net_func_node not in tree.successors else None
+                                        sendto_node_added = True
+                            if not sendto_node_added:
+                                new_net_func_tree = NetFuncTree(2, state_block, socket)
+                                new_net_func_tree.add_successor(copy.deepcopy(
+                                    net_func_node)) if net_func_node not in new_net_func_tree.successors else None
+                                self.network_table[i].append(new_net_func_tree)
                     elif state_cfg_node.name == "recvfrom":
                         ip, port, size = recvfrom_state(state)
                         net_func_node = NetFuncNode("recvfrom", size)

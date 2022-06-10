@@ -32,9 +32,13 @@ from parameterized import parameterized_class
         "comms": {('127.0.0.1', 8888): {"protocol": 2,
                                         "functions": {
                                             "sendto": {"number": 1, "size": None},
-                                            "recvfrom": {"number": 1, "size": None}
                                             }
+                                        },
+                  (None, None): {"protocol": 2,
+                                 "functions": {
+                                        "recvfrom": {"number": 1, "size": None}
                                         }
+                                 },
                   }
     },
     {"code_sample": "connected_udpclient",
@@ -54,8 +58,8 @@ from parameterized import parameterized_class
                                       }},
                   (None, None): {"protocol": 2,
                                  "functions": {
-                                     "sendto": 1,
-                                     "recvfrom": 1
+                                     "sendto": {"number": 1},
+                                     "recvfrom": {"number": 1}
                                  }}}
      }
 ])
