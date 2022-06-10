@@ -317,8 +317,8 @@ class NetworkAnalysis:
                     if tree.ip is not None and tree.port is not None \
                             and tree.ip != ip and tree.port != port:
                         new_net_func_tree = NetFuncTree(tree.protocol, tree.block, tree.socket_fd, ip, port)
+                        new_net_func_tree.add_successor(copy.deepcopy(net_func_node))
                         self.network_table[i].append(new_net_func_tree)
-                        # TODO: Add bind NetFuncNode to new net func tree?
                         tree.socket_fd = None
                     # Socket ip, port assigned for the first time
                     else:
