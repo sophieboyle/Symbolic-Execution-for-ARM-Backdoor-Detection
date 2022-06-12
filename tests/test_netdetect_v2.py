@@ -84,6 +84,13 @@ from parameterized import parameterized_class
                                         }}
                   },
      },
+    {"code_sample": "conditional-socket",
+        "comms": {('127.0.0.1', 8888): {"protocol": 1,
+                                        "functions": {
+                                            "connect": {"number": 1}
+                                        }}
+                  },
+     },
 ])
 class TestNetworkDetection(unittest.TestCase):
     @classmethod
