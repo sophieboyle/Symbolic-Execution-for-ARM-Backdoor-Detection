@@ -363,8 +363,8 @@ class NetworkDriver:
 
         self.socket_table = self.find_sockets()
         self.network_table = {}
-        self.malicious_ips = self.get_malicious_net('../resources/bad-ips.csv')
-        self.malicious_ports = self.get_malicious_net('../resources/bad-ports.csv')
+        self.malicious_ips = self.get_malicious_net('resources/bad-ips.csv')
+        self.malicious_ports = self.get_malicious_net('resources/bad-ports.csv')
         self.output_string = ""
 
     def get_malicious_net(self, filename):

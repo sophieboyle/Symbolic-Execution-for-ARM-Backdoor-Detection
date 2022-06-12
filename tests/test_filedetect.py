@@ -15,7 +15,7 @@ from parameterized import parameterized_class
 class TestFileDetection(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        analyser = Analyser(f"code-samples/file-access/{cls.code_sample}",
+        analyser = Analyser(f"tests/code-samples/file-access/{cls.code_sample}",
                             {"string": []},
                             None
                             )

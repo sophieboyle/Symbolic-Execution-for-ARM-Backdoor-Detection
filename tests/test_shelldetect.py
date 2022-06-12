@@ -12,7 +12,7 @@ from parameterized import parameterized_class
 class TestShellDetection(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        analyser = Analyser(f"code-samples/shell-strings/{cls.code_sample}",
+        analyser = Analyser(f"tests/code-samples/shell-strings/{cls.code_sample}",
                             {"string": []},
                             None
                             )
