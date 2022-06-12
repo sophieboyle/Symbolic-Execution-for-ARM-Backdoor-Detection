@@ -364,7 +364,8 @@ class NetworkAnalysis:
                         sendto_node_added = True
                         break
                     # If unestablished UDP: Assign the socket with the ip:port specified?
-                    elif not tree.udp_type == "established_bound":
+                    elif not tree.udp_type == "established_bound" and tree.ip is None and tree.port is None\
+                            and len(tree.successors) == 0:
                         tree.ip = ip
                         tree.port = port
                         tree.add_successor(
@@ -373,6 +374,8 @@ class NetworkAnalysis:
                         break
             if not sendto_node_added:
                 new_net_func_tree = NetFuncTree(2, state_block, socket)
+                new_net_func_tree.ip = ip
+                new_net_func_tree.port = port
                 new_net_func_tree.add_successor(copy.deepcopy(
                     net_func_node)) if net_func_node not in new_net_func_tree.successors else None
                 self.network_table[i].append(new_net_func_tree)

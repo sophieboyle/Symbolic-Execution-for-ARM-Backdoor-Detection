@@ -61,6 +61,21 @@ from parameterized import parameterized_class
                                      "sendto": {"number": 1},
                                      "recvfrom": {"number": 1}
                                  }}}
+     },
+    {"code_sample": "sequential_udp",
+        "comms": {('127.0.0.1', 8888): {"protocol": 2,
+                                      "functions": {
+                                          "sendto": {"number": 1}
+                                      }},
+                  ('127.0.0.1', 8889): {"protocol": 2,
+                                      "functions": {
+                                        "sendto": {"number": 1}
+                                      }},
+                  (None, None): {"protocol": 2,
+                                 "functions": {
+                                        "recvfrom": {"number": 2}
+                                      }}
+                  },
      }
 ])
 class TestNetworkDetection(unittest.TestCase):
