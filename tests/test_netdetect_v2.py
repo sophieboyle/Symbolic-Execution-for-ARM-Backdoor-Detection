@@ -76,7 +76,14 @@ from parameterized import parameterized_class
                                         "recvfrom": {"number": 2}
                                       }}
                   },
-     }
+     },
+    {"code_sample": "conditional-connect-sample",
+        "comms": {('127.0.0.1', 8888): {"protocol": 1,
+                                        "functions": {
+                                            "connect": {"number": 1}
+                                        }}
+                  },
+     },
 ])
 class TestNetworkDetection(unittest.TestCase):
     @classmethod
