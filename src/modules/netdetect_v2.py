@@ -312,20 +312,19 @@ class NetworkAnalysis:
         for i in path_indexes:
             for tree in self.network_table[i]:
                 if tree.socket_fd == socket:
-                    # If the socket has been rebound, create new socket
-                    # and re-assign the file descriptor
-                    if tree.ip is not None and tree.port is not None \
-                            and tree.ip != ip and tree.port != port:
-                        new_net_func_tree = NetFuncTree(tree.protocol, tree.block, tree.socket_fd, ip, port)
-                        new_net_func_tree.add_successor(copy.deepcopy(net_func_node))
-                        self.network_table[i].append(new_net_func_tree)
-                        tree.socket_fd = None
                     # Socket ip, port assigned for the first time
-                    else:
+                    if tree.ip is None and tree.port is None:
                         tree.ip = ip
                         tree.port = port
                         tree.add_successor(
                             copy.deepcopy(net_func_node)) if net_func_node not in tree.successors else None
+                    # If the socket has been rebound, create new socket
+                    # and re-assign the file descriptor
+                    else:
+                        new_net_func_tree = NetFuncTree(tree.protocol, tree.block, tree.socket_fd, ip, port)
+                        new_net_func_tree.add_successor(copy.deepcopy(net_func_node))
+                        self.network_table[i].append(new_net_func_tree)
+                        tree.socket_fd = None
                     break
 
     def case_connect(self, net_func_node, path_indexes, socket, ip, port):
