@@ -110,7 +110,8 @@ class Analyser:
         # Run file detection
         file_io_addresses, file_io_prelude_blocks = self.get_addresses_and_blocks_for_func_names(
                                                         ["fopen", "fwrite", "fread", "__isoc99_fscanf"])
-        file_access_driver = FileAccessDriver(self.project, self.entry_state, file_io_addresses, file_io_prelude_blocks)
+        file_access_driver = FileAccessDriver(self.project, self.entry_state, file_io_addresses, file_io_prelude_blocks,
+                                              self.cfg)
         self.results["file_access_table"] = file_access_driver.run_file_detection()
         self.output_string += file_access_driver.get_output_string()
 

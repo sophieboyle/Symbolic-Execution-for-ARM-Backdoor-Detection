@@ -8,7 +8,7 @@ class FileAccessDetector:
     on a specific file given by filename.
     """
 
-    def __init__(self, project, entry_state, addr_to_func_map, func_prelude_blocks, filename):
+    def __init__(self, project, entry_state, addr_to_func_map, func_prelude_blocks, filename, cfg):
         self.sim = project.factory.simgr(entry_state)
         self.main = project.loader.main_object.get_symbol("main")
         self.main_state = project.factory.blank_state(addr=self.main.rebased_addr)
@@ -20,8 +20,12 @@ class FileAccessDetector:
         self.filename = filename
         self.result = {}
         self.currently_finding_func_name = None
+
         limiter = angr.exploration_techniques.lengthlimiter.LengthLimiter(max_length=100, drop=True)
         self.sim.use_technique(limiter)
+        loopseer = angr.exploration_techniques.LoopSeer(cfg=cfg, bound=0)
+        self.sim.use_technique(loopseer)
+
         self.updated_file_pointer = None
         self.result = {"fopen": False, "fread": False, "fwrite": False, "__isoc99_fscanf": False}
         self.file_pointer = None
@@ -112,11 +116,12 @@ class FileAccessDriver:
             fileio_addresses should be a dictionary of {func_name: [addresses]}
 
     """
-    def __init__(self, project, entry_state, fileio_func_addresses, func_prelude_blocks):
+    def __init__(self, project, entry_state, fileio_func_addresses, func_prelude_blocks, cfg):
         self.project = project
         self.entry_state = entry_state
         self.fileio_func_addresses = fileio_func_addresses
         self.func_prelude_blocks = func_prelude_blocks
+        self.cfg = cfg
 
         self.addr_to_func_map = self.reformat_fileio_func_addresses()
         self.sensitive_files = self.get_sensitive_files('resources/sensitive-files.csv')
@@ -143,7 +148,7 @@ class FileAccessDriver:
                 filedetector = FileAccessDetector(self.project, self.entry_state,
                                                   self.addr_to_func_map,
                                                   self.func_prelude_blocks,
-                                                  filename)
+                                                  filename, self.cfg)
                 file_accesses = filedetector.find()
                 self.file_table[filename] = file_accesses
         self.construct_output_string()
