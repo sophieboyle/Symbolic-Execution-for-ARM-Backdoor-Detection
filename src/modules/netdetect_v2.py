@@ -466,6 +466,7 @@ class NetworkAnalysis:
                     if state_cfg_node.name == "bind":
                         ip, port = bind_state(state)
                         net_func_node = NetFuncNode("bind")
+                        print(f"Bind {port}")
                         self.case_bind(net_func_node, path_indexes, socket, ip, port)
                     elif state_cfg_node.name == "connect":
                         ip, port = connect_state(state)
