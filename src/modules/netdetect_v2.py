@@ -492,11 +492,28 @@ class NetworkAnalysis:
 
         return
 
-    def analyse(self):
+    def analyse(self, disallowed_ips, disallowed_ports):
         self.run()
         unique_comms = self.get_unique_communications()
         final_comms = self.remove_null_comms(unique_comms)
-        return final_comms
+        malicious_comms = self.remove_non_malicious_comms(final_comms, disallowed_ips, disallowed_ports)
+        return malicious_comms
+
+    def remove_non_malicious_comms(self, final_comms, disallowed_ips, disallowed_ports):
+        malicious_comms = {}
+        for addr_info, netfunctree in final_comms.items():
+            # If IP and port is None, then keep info anyway
+            if addr_info == (None, None):
+                malicious_comms[addr_info] = netfunctree
+            # If bound, then check that the port is a disallowed port
+            if addr_info[0] == '0.0.0.0':
+                if str(addr_info[1]) in disallowed_ports:
+                    malicious_comms[addr_info] = netfunctree
+            # If sending outbound, then check the IP
+            else:
+                if addr_info[0] in disallowed_ips:
+                    malicious_comms[addr_info] = netfunctree
+        return malicious_comms
 
     def get_unique_communications(self):
         unique_comms = {}

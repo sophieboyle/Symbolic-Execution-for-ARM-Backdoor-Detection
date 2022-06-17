@@ -116,6 +116,9 @@ class Analyser:
         self.output_string += file_access_driver.get_output_string()
 
         # Run network detection
+        disallowed_ips = get_malicious_net("resources/bad-ips.csv")
+        disallowed_ports = get_malicious_net("resources/bad-ports.csv")
+
         socket_post_blocks = self.find_post_blocks("socket")
         net_addresses, net_prelude_blocks = self.get_addresses_and_blocks_for_func_names(
                                                         ["socket", "accept", "bind",
@@ -126,7 +129,7 @@ class Analyser:
         #self.output_string += net_driver.get_output_string()
 
         net_driver = NetworkAnalysis(self.project, self.entry_state, self.cfg)
-        self.results["network_table"] = net_driver.analyse()
+        self.results["network_table"] = net_driver.analyse(disallowed_ips, disallowed_ports)
         self.output_string += net_driver.build_output_string(self.results["network_table"])
 
         # Detect shell commands
@@ -194,6 +197,18 @@ def read_bytes(filename):
     with open(filename, "rb") as f:
         bytes_str = f.read()
     return bytes_str
+
+
+def get_malicious_net(filename):
+    """
+    Retrieve the disallow list of malicious network addresses/ports
+    :param filename: File to read malicious network addresses/ports from
+    :return: A list of strings representing disallowed addresses/ports
+    """
+    with open(filename, 'r') as f:
+        f.readline()
+        netlist = f.read().splitlines()
+    return netlist
 
 
 def main():
