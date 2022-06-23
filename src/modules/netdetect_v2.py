@@ -561,5 +561,16 @@ class NetworkAnalysis:
                            "Check for usages of sendto or recvfrom.\n"
             out_str += "\nDetailed network function information:\n"
             for func, count in tree.func_dict.items():
-                out_str += f"Instances of {func}: {count}\n"
+                out_str += f"Instances of {func}: {count}"
+                msg_sizes = []
+                for netfuncnode in tree.successors:
+                    if func == netfuncnode.func_name:
+                        msg_sizes.append(netfuncnode.msg_size)
+                # For the sake of better formatting
+                if func == "recvfrom":
+                    out_str += f"\t\tMessage sizes: {msg_sizes}\n"
+                elif func in ["send", "sendto", "recv"]:
+                    out_str += f"\t\t\tMessage sizes: {msg_sizes}\n"
+                else:
+                    out_str += "\n"
         return out_str
