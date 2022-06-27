@@ -291,7 +291,7 @@ class NetworkAnalysis:
         angr.types.register_types(angr.types.parse_type(
             'struct sockaddr_in{ unsigned short sin_family; uint16_t sin_port; struct in_addr sin_addr; }'))
 
-    def add_node_to_network_table(self, func_name, socket, path_indexes, size=None):
+    def add_node_to_network_table(self, func_name, socket, path_indexes, path_dict, size=None):
         """
         Adds a node representing a network function to the network table by reading its file descriptor
         :param func_name: The name of the network function
@@ -303,9 +303,11 @@ class NetworkAnalysis:
             for tree in self.network_table[i]:
                 if tree.socket_fd == socket:
                     net_func_node = NetFuncNode(func_name, size)
-                    tree.add_successor(net_func_node) if not [n for n in tree.successors if n.func_name
-                                                              == func_name and n.msg_size == size] \
-                        else None
+                    # If the node is unique and the number of nodes for the given function in the path
+                    # have not been added to the tree yet
+                    if not [n for n in tree.successors if n.func_name == func_name and n.msg_size == size] and\
+                            len(list(filter(lambda cfg_n: cfg_n.name == func_name, path_dict[i]))) != tree.func_dict[func_name]:
+                        tree.add_successor(net_func_node)
                     break
 
     def case_bind(self, net_func_node, path_indexes, socket, ip, port):
@@ -471,7 +473,7 @@ class NetworkAnalysis:
                         self.case_connect(net_func_node, path_indexes, socket, ip, port)
                     elif state_cfg_node.name == "send":
                         size = send_state(state)
-                        self.add_node_to_network_table("send", socket, path_indexes, size)
+                        self.add_node_to_network_table("send", socket, path_indexes, path_dict, size)
                     elif state_cfg_node.name == "sendto":
                         ip, port, size = sendto_state(state)
                         net_func_node = NetFuncNode("sendto", size)
@@ -482,7 +484,7 @@ class NetworkAnalysis:
                         self.case_recvfrom(net_func_node, path_indexes, state_block, socket, size)
                     elif state_cfg_node.name == "recv":
                         size = recv_state(state)
-                        self.add_node_to_network_table("recv", socket, path_indexes, size)
+                        self.add_node_to_network_table("recv", socket, path_indexes, path_dict, size)
                 else:
                     pass
             self.sim.step()
