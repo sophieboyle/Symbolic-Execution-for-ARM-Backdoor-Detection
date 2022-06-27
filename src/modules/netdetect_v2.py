@@ -284,7 +284,7 @@ class NetworkAnalysis:
         limiter = angr.exploration_techniques.lengthlimiter.LengthLimiter(max_length=100, drop=True)
         self.sim.use_technique(limiter)
 
-        loopseer = angr.exploration_techniques.LoopSeer(cfg=self.cfg, bound=0)
+        loopseer = angr.exploration_techniques.LoopSeer(cfg=self.cfg, bound=1)
         self.sim.use_technique(loopseer)
 
         angr.types.register_types(angr.types.parse_type('struct in_addr{ uint32_t s_addr; }'))
@@ -421,10 +421,7 @@ class NetworkAnalysis:
         # Find stack check fail blocks -> these loop infinitely
         stck_chk_fail_blocks = [n for n in self.cfg.nodes() if n.name == "__stack_chk_fail"]
 
-        while self.sim.active and \
-                len(self.sim.active) != \
-                len([s for s in self.sim.active
-                     if self.project.factory.block(s.solver.eval(s.ip)) in stck_chk_fail_blocks]):
+        while self.sim.active:
             for state in self.sim.active:
                 state_block = self.project.factory.block(state.solver.eval(state.ip))
                 state_cfg_node = next(filter(lambda node: node.addr == state_block.addr, list(self.cfg.nodes())), None)
