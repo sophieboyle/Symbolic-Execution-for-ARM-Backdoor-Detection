@@ -137,7 +137,8 @@ class PathSearch:
         """
         visited.add(n)
         path.append(n)
-        if n.name == "PathTerminator" or n.name == "exit":
+        # if n.name == "PathTerminator" or n.name == "exit":
+        if all(e in visited for e in n.successors):
             self.g_paths.append(path.copy())
         else:
             for successor in n.successors:
@@ -423,6 +424,8 @@ class NetworkAnalysis:
         # Find stack check fail blocks -> these loop infinitely
         stck_chk_fail_blocks = [n for n in self.cfg.nodes() if n.name == "__stack_chk_fail"]
 
+        recv_paths = list(filter(lambda x: len(list(filter(lambda n: n.name == "recv", x))) > 0, paths))
+
         while self.sim.active:
             for state in self.sim.active:
                 state_block = self.project.factory.block(state.solver.eval(state.ip))
@@ -439,9 +442,6 @@ class NetworkAnalysis:
                 # Check what path this block applies to
                 path_indexes = []
                 for path_num, path in path_dict.items():
-                    # TODO: Add conditional to ensure that the predecessor to the block must be in the path?
-                    # not set([s.addr for s in state_cfg_node.predecessors[0].predecessors]).isdisjoint([b.addr for b in path]):
-                    test = state.history.bbl_addrs
                     if state_block.addr in [b.addr for b in path]:
                         if len(state.history.bbl_addrs) > 2:
                             if list(state.history.bbl_addrs)[-2] in [b.addr for b in path]:
