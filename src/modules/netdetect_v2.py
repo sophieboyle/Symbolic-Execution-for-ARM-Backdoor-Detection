@@ -424,8 +424,6 @@ class NetworkAnalysis:
         # Find stack check fail blocks -> these loop infinitely
         stck_chk_fail_blocks = [n for n in self.cfg.nodes() if n.name == "__stack_chk_fail"]
 
-        recv_paths = list(filter(lambda x: len(list(filter(lambda n: n.name == "recv", x))) > 0, paths))
-
         while self.sim.active:
             for state in self.sim.active:
                 state_block = self.project.factory.block(state.solver.eval(state.ip))
