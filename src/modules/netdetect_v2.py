@@ -137,7 +137,8 @@ class PathSearch:
         """
         visited.add(n)
         path.append(n)
-        if n.name == "PathTerminator" or n.name == "exit":
+        # if n.name == "PathTerminator" or n.name == "exit":
+        if all(e in visited for e in n.successors):
             self.g_paths.append(path.copy())
         else:
             for successor in n.successors:
@@ -291,7 +292,7 @@ class NetworkAnalysis:
         angr.types.register_types(angr.types.parse_type(
             'struct sockaddr_in{ unsigned short sin_family; uint16_t sin_port; struct in_addr sin_addr; }'))
 
-    def add_node_to_network_table(self, func_name, socket, path_indexes, size=None):
+    def add_node_to_network_table(self, func_name, socket, path_indexes, path_dict, size=None):
         """
         Adds a node representing a network function to the network table by reading its file descriptor
         :param func_name: The name of the network function
@@ -303,14 +304,23 @@ class NetworkAnalysis:
             for tree in self.network_table[i]:
                 if tree.socket_fd == socket:
                     net_func_node = NetFuncNode(func_name, size)
-                    tree.add_successor(net_func_node) if not [n for n in tree.successors if n.func_name
-                                                              == func_name and n.msg_size == size] \
-                        else None
+                    # If the node is unique and the number of nodes for the given function in the path
+                    # have not been added to the tree yet
+                    if not [n for n in tree.successors if n.func_name == func_name and n.msg_size == size] and\
+                            len(list(filter(lambda cfg_n: cfg_n.name == func_name, path_dict[i]))) != tree.func_dict[func_name]:
+                        tree.add_successor(net_func_node)
                     break
+
+    def check_if_state_revisited(self, tree, path, func_name):
+        # Fix: when state traversed multiple times, make sure not to re-add the state
+        # This should be revisited in future and fixed properly
+        return len(list(filter(lambda cfg_n: cfg_n.name == func_name, path))) == tree.func_dict[func_name]
 
     def case_bind(self, net_func_node, path_indexes, socket, ip, port):
         for i in path_indexes:
             for tree in self.network_table[i]:
+                if self.check_if_state_revisited(tree, self.path_dict[i], "bind"):
+                    break
                 if tree.socket_fd == socket:
                     # Socket ip, port assigned for the first time
                     if tree.ip is None and tree.port is None:
@@ -330,6 +340,8 @@ class NetworkAnalysis:
     def case_connect(self, net_func_node, path_indexes, socket, ip, port):
         for i in path_indexes:
             for tree in self.network_table[i]:
+                if self.check_if_state_revisited(tree, self.path_dict[i], "connect"):
+                    break
                 if tree.socket_fd == socket:
                     if tree.protocol == 2:
                         # If UDP connection, must create new netfunctree with the same socket
@@ -354,6 +366,8 @@ class NetworkAnalysis:
         for i in path_indexes:
             sendto_node_added = False
             for tree in self.network_table[i]:
+                if self.check_if_state_revisited(tree, self.path_dict[i], "sendto"):
+                    break
                 if tree.socket_fd == socket:
                     # If TCP or established_connected UDP Just use the socket's ip:port
                     if tree.protocol in [1, 5] or \
@@ -383,6 +397,8 @@ class NetworkAnalysis:
         for i in path_indexes:
             recvfrom_node_added = False
             for tree in self.network_table[i]:
+                if self.check_if_state_revisited(tree, self.path_dict[i], "recvfrom"):
+                    break
                 if tree.socket_fd == socket:
                     # If TCP or established_connected UDP: use the socket's IP and port
                     if tree.protocol in [1, 5] or \
@@ -413,6 +429,8 @@ class NetworkAnalysis:
             self.network_table[i] = []
             i += 1
 
+        self.path_dict = path_dict
+
         # This is necessary since it seems impossible to get a CFG node from a block
         block_to_cfg = {}
         for n in list(self.cfg.nodes()):
@@ -421,10 +439,7 @@ class NetworkAnalysis:
         # Find stack check fail blocks -> these loop infinitely
         stck_chk_fail_blocks = [n for n in self.cfg.nodes() if n.name == "__stack_chk_fail"]
 
-        while self.sim.active and \
-                len(self.sim.active) != \
-                len([s for s in self.sim.active
-                     if self.project.factory.block(s.solver.eval(s.ip)) in stck_chk_fail_blocks]):
+        while self.sim.active:
             for state in self.sim.active:
                 state_block = self.project.factory.block(state.solver.eval(state.ip))
                 state_cfg_node = next(filter(lambda node: node.addr == state_block.addr, list(self.cfg.nodes())), None)
@@ -440,9 +455,6 @@ class NetworkAnalysis:
                 # Check what path this block applies to
                 path_indexes = []
                 for path_num, path in path_dict.items():
-                    # TODO: Add conditional to ensure that the predecessor to the block must be in the path?
-                    # not set([s.addr for s in state_cfg_node.predecessors[0].predecessors]).isdisjoint([b.addr for b in path]):
-                    test = state.history.bbl_addrs
                     if state_block.addr in [b.addr for b in path]:
                         if len(state.history.bbl_addrs) > 2:
                             if list(state.history.bbl_addrs)[-2] in [b.addr for b in path]:
@@ -474,7 +486,7 @@ class NetworkAnalysis:
                         self.case_connect(net_func_node, path_indexes, socket, ip, port)
                     elif state_cfg_node.name == "send":
                         size = send_state(state)
-                        self.add_node_to_network_table("send", socket, path_indexes, size)
+                        self.add_node_to_network_table("send", socket, path_indexes, path_dict, size)
                     elif state_cfg_node.name == "sendto":
                         ip, port, size = sendto_state(state)
                         net_func_node = NetFuncNode("sendto", size)
@@ -485,7 +497,7 @@ class NetworkAnalysis:
                         self.case_recvfrom(net_func_node, path_indexes, state_block, socket, size)
                     elif state_cfg_node.name == "recv":
                         size = recv_state(state)
-                        self.add_node_to_network_table("recv", socket, path_indexes, size)
+                        self.add_node_to_network_table("recv", socket, path_indexes, path_dict, size)
                 else:
                     pass
             self.sim.step()
