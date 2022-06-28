@@ -285,7 +285,7 @@ class NetworkAnalysis:
         limiter = angr.exploration_techniques.lengthlimiter.LengthLimiter(max_length=100, drop=True)
         self.sim.use_technique(limiter)
 
-        loopseer = angr.exploration_techniques.LoopSeer(cfg=self.cfg, bound=1)
+        loopseer = angr.exploration_techniques.LoopSeer(cfg=self.cfg, bound=0)
         self.sim.use_technique(loopseer)
 
         angr.types.register_types(angr.types.parse_type('struct in_addr{ uint32_t s_addr; }'))
