@@ -311,9 +311,16 @@ class NetworkAnalysis:
                         tree.add_successor(net_func_node)
                     break
 
+    def check_if_state_revisited(self, tree, path, func_name):
+        # Fix: when state traversed multiple times, make sure not to re-add the state
+        # This should be revisited in future and fixed properly
+        return len(list(filter(lambda cfg_n: cfg_n.name == func_name, path))) == tree.func_dict[func_name]
+
     def case_bind(self, net_func_node, path_indexes, socket, ip, port):
         for i in path_indexes:
             for tree in self.network_table[i]:
+                if self.check_if_state_revisited(tree, self.path_dict[i], "bind"):
+                    break
                 if tree.socket_fd == socket:
                     # Socket ip, port assigned for the first time
                     if tree.ip is None and tree.port is None:
@@ -333,6 +340,8 @@ class NetworkAnalysis:
     def case_connect(self, net_func_node, path_indexes, socket, ip, port):
         for i in path_indexes:
             for tree in self.network_table[i]:
+                if self.check_if_state_revisited(tree, self.path_dict[i], "connect"):
+                    break
                 if tree.socket_fd == socket:
                     if tree.protocol == 2:
                         # If UDP connection, must create new netfunctree with the same socket
@@ -357,6 +366,8 @@ class NetworkAnalysis:
         for i in path_indexes:
             sendto_node_added = False
             for tree in self.network_table[i]:
+                if self.check_if_state_revisited(tree, self.path_dict[i], "sendto"):
+                    break
                 if tree.socket_fd == socket:
                     # If TCP or established_connected UDP Just use the socket's ip:port
                     if tree.protocol in [1, 5] or \
@@ -386,6 +397,8 @@ class NetworkAnalysis:
         for i in path_indexes:
             recvfrom_node_added = False
             for tree in self.network_table[i]:
+                if self.check_if_state_revisited(tree, self.path_dict[i], "recvfrom"):
+                    break
                 if tree.socket_fd == socket:
                     # If TCP or established_connected UDP: use the socket's IP and port
                     if tree.protocol in [1, 5] or \
@@ -415,6 +428,8 @@ class NetworkAnalysis:
             path_dict[i] = path
             self.network_table[i] = []
             i += 1
+
+        self.path_dict = path_dict
 
         # This is necessary since it seems impossible to get a CFG node from a block
         block_to_cfg = {}
