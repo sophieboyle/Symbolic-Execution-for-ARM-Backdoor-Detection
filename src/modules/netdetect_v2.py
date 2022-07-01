@@ -269,6 +269,26 @@ def recvfrom_state(state):
     return ip, port, size
 
 
+def ancestral_states_bfs(root_state, target_state):
+    queue = []
+    visited = {root_state}
+    queue.append(root_state)
+    while queue:
+        v = queue.pop(0)
+        if v == target_state:
+            return v
+        for parent in v.parents:
+            if parent.state not in visited:
+                visited.add(parent.state)
+                queue.append(parent.state)
+
+
+def check_if_tree_state_in_history(current_state, tree):
+    # Must perform breadth first search of all ancestral states to the current state
+    # Check if the tree state appears
+    return True if ancestral_states_bfs(current_state, tree.state) is not None else False
+
+
 class NetworkAnalysis:
     def __init__(self, project, entry_state, cfg):
         self.project = project
@@ -316,14 +336,6 @@ class NetworkAnalysis:
         # Fix: when state traversed multiple times, make sure not to re-add the state
         # This should be revisited in future and fixed properly
         return len(list(filter(lambda cfg_n: cfg_n.name == func_name, path))) == tree.func_dict[func_name]
-
-    def ancestral_states_BFS(self):
-        pass
-
-    def check_if_tree_state_in_history(self, current_state, tree):
-        # Must perform breadth first search of all ancestral states to the current state
-        # Check if the tree state appears
-        pass
 
     def case_bind(self, net_func_node, path_indexes, state, socket, ip, port):
         for i in path_indexes:
