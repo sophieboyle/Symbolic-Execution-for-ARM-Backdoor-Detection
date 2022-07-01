@@ -269,17 +269,24 @@ def recvfrom_state(state):
     return ip, port, size
 
 
+def check_state_not_visited(state, visited):
+    # Required because 'if parent.state not in visited' doesn't work as a result of weak referencing in Angr
+    for vs in visited:
+        if vs.__eq__(state):
+            return True
+    return False
+
 def ancestral_states_bfs(root_state, target_state):
     queue = []
-    visited = {root_state}
+    visited = [root_state]
     queue.append(root_state)
     while queue:
         v = queue.pop(0)
-        if v == target_state:
+        if v.__eq__(target_state):
             return v
-        for parent in v.parents:
-            if parent.state not in visited:
-                visited.add(parent.state)
+        for parent in v.history.parents:
+            if check_state_not_visited(parent.state, visited):
+                visited.append(parent.state)
                 queue.append(parent.state)
 
 
@@ -328,21 +335,22 @@ class NetworkAnalysis:
                     # If the node is unique and the number of nodes for the given function in the path
                     # have not been added to the tree yet
                     if not [n for n in tree.successors if n.func_name == func_name and n.msg_size == size] and\
-                            len(list(filter(lambda cfg_n: cfg_n.name == func_name, path_dict[i]))) != tree.func_dict[func_name]:
+                            check_if_tree_state_in_history(state, tree):
                         tree.add_successor(net_func_node)
                     break
 
     def check_if_state_revisited(self, tree, path, func_name):
         # Fix: when state traversed multiple times, make sure not to re-add the state
         # This should be revisited in future and fixed properly
-        return len(list(filter(lambda cfg_n: cfg_n.name == func_name, path))) == tree.func_dict[func_name]
+        #return len(list(filter(lambda cfg_n: cfg_n.name == func_name, path))) == tree.func_dict[func_name]
+        return False
 
     def case_bind(self, net_func_node, path_indexes, state, socket, ip, port):
         for i in path_indexes:
             for tree in self.network_table[i]:
                 if self.check_if_state_revisited(tree, self.path_dict[i], "bind"):
                     break
-                if tree.socket_fd == socket:
+                if tree.socket_fd == socket and check_if_tree_state_in_history(state, tree):
                     # Socket ip, port assigned for the first time
                     if tree.ip is None and tree.port is None:
                         tree.ip = ip
@@ -363,7 +371,7 @@ class NetworkAnalysis:
             for tree in self.network_table[i]:
                 if self.check_if_state_revisited(tree, self.path_dict[i], "connect"):
                     break
-                if tree.socket_fd == socket:
+                if tree.socket_fd == socket and check_if_tree_state_in_history(state, tree):
                     if tree.protocol == 2:
                         # If UDP connection, must create new netfunctree with the same socket
                         # file descriptor in case of a bind() followed by connect().
@@ -389,7 +397,7 @@ class NetworkAnalysis:
             for tree in self.network_table[i]:
                 if self.check_if_state_revisited(tree, self.path_dict[i], "sendto"):
                     break
-                if tree.socket_fd == socket:
+                if tree.socket_fd == socket and check_if_tree_state_in_history(state, tree):
                     # If TCP or established_connected UDP Just use the socket's ip:port
                     if tree.protocol in [1, 5] or \
                             (tree.protocol == 2 and tree.udp_type == "established_connected"):
@@ -420,7 +428,7 @@ class NetworkAnalysis:
             for tree in self.network_table[i]:
                 if self.check_if_state_revisited(tree, self.path_dict[i], "recvfrom"):
                     break
-                if tree.socket_fd == socket:
+                if tree.socket_fd == socket and check_if_tree_state_in_history(state, tree):
                     # If TCP or established_connected UDP: use the socket's IP and port
                     if tree.protocol in [1, 5] or \
                             (tree.protocol == 2 and tree.udp_type == "established_connected"):
