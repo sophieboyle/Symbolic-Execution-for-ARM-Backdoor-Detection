@@ -91,6 +91,13 @@ from parameterized import parameterized_class
                                         }}
                   },
      },
+    {"code_sample": "conditional-net-malicious-and-non-malicious",
+        "comms": {('0.0.0.0', 1337): {"protocol": 1,
+                                      "functions": {
+                                           "bind": {"number": 1}
+                                       }}
+                  },
+     },
 ])
 class TestNetworkDetection(unittest.TestCase):
     @classmethod
